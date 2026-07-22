@@ -1,0 +1,2766 @@
+<!DOCTYPE html>
+<!-- 
+  =============================================================================
+  Simulador de Consumo y Throttling (Overage Bucket)
+  
+  Copyright (c) 2026 Ricardo Rincón (nexus150) - https://linkedin.com/in/nexus150
+  
+  This project is licensed under the MIT License.
+  See the LICENSE file in the root directory for more information.
+  =============================================================================
+-->
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Consumo - Microsoft Fabric</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@1.2.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .clickable-canvas { cursor: crosshair; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-200 font-sans flex flex-col min-h-screen">
+
+    <div class="container mx-auto px-4 py-6 max-w-[1400px] flex-1">
+        
+        <header class="border-b border-slate-700 pb-4 mb-6 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
+            <div class="flex items-center gap-4">
+                <h1 class="text-2xl font-bold text-sky-400" data-i18n="title">Simulador de Consumo de CUs de Fabric</h1>
+                <div class="flex gap-1 bg-slate-800 rounded p-1 border border-slate-700 ml-4">
+                    <button id="lang-es" onclick="setLanguage('es')" class="px-2 py-1 text-xs font-bold rounded hover:bg-slate-700 transition opacity-50" title="Español">ES</button>
+                    <button id="lang-en" onclick="setLanguage('en')" class="px-2 py-1 text-xs font-bold rounded hover:bg-slate-700 transition" title="English">EN</button>
+                </div>
+                <div class="flex items-center gap-2 ml-4 text-xs text-slate-300">
+                    <label data-i18n="numberFormat">Number Format:</label>
+                    <select id="num-format-select" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 cursor-pointer" onchange="handleFormatChange(this)" data-prev="en">
+                        <option value="en">1,234.56</option>
+                        <option value="es">1.234,56</option>
+                    </select>
+                    
+                    <label class="ml-2" data-i18n="dateFormat">Date Format:</label>
+                    <select id="date-format-select" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 cursor-pointer" onchange="handleFormatChange(this)" data-prev="en">
+                        <option value="en">YYYY/MM/DD</option>
+                        <option value="es">DD/MM/YYYY</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex flex-col md:flex-row gap-4">
+                <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700">
+                    <div class="text-right border-r border-slate-600 pr-3">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realTotal">&#x1F4B3; Real (Total)</div>
+                        <div id="cost-real" class="text-lg font-mono font-bold text-white">0.00 €</div>
+                    </div>
+                    <div class="text-right border-r border-slate-600 pr-3">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realRes">Real (Reserva)</div>
+                        <div id="cost-real-res" class="text-sm font-mono font-bold text-emerald-400">0.00 €</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realPayg">Real (PAYG)</div>
+                        <div id="cost-real-payg" class="text-sm font-mono font-bold text-amber-400">0.00 €</div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700">
+                    <div class="text-right border-r border-slate-600 pr-3 relative pb-2">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="escenPayg">Escen. Todo PAYG</div>
+                        <div id="cost-payg" class="text-lg font-mono font-bold text-slate-300">0.00 €</div>
+                        <div id="diff-payg" class="text-[9px] font-mono text-slate-500 absolute bottom-0 right-3 whitespace-nowrap">--</div>
+                    </div>
+                    <div class="text-right relative pb-2">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="escenRes">Escen. Todo Reserva</div>
+                        <div id="cost-reserved" class="text-lg font-mono font-bold text-slate-300">0.00 €</div>
+                        <div id="diff-res" class="text-[9px] font-mono text-slate-500 absolute bottom-0 right-0 whitespace-nowrap">--</div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col gap-3 shadow-lg">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1" data-i18n="infra">1. Infraestructura</h2>
+                <div class="flex gap-2 text-xs">
+                    <div class="flex-1 min-w-0">
+                        <label class="block text-slate-400 mb-1 truncate" title="Precio F2/H (PAYG)" data-i18n="pricePayg">Precio F2/H (PAYG)</label>
+                        <input id="price-f2-payg" type="text" value="0.379" class="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-center outline-none">
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <label class="block text-slate-400 mb-1 truncate" title="Precio F2/H (Res)" data-i18n="priceRes">Precio F2/H (Res)</label>
+                        <input id="price-f2-res" type="text" value="0.218" class="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-center outline-none">
+                    </div>
+                    <div class="w-16 shrink-0">
+                        <label class="block text-slate-400 mb-1 text-center truncate" data-i18n="currency">Divisa</label>
+                        <select id="currency-select" onchange="recalcularFacturacion()" class="w-full bg-slate-900 border border-slate-600 rounded p-1 text-white text-center outline-none cursor-pointer px-0">
+                            <option value="EUR">EUR</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1" data-i18n="sku">Capacidad Contratada (SKU)</label>
+                    <select id="sku-select" onchange="cambiarSKU()" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-sm text-white outline-none cursor-pointer">
+                        <option value="2" selected>F2 (60 CUs / Timepoint)</option>
+                        <option value="4">F4 (120 CUs / Timepoint)</option>
+                        <option value="8">F8 (240 CUs / Timepoint)</option>
+                        <option value="16">F16 (480 CUs / Timepoint)</option>
+                        <option value="32">F32 (960 CUs / Timepoint)</option>
+                        <option value="64">F64 (1920 CUs / Timepoint)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-400 mb-1" data-i18n="horizon">Horizonte Temporal</label>
+                    <select id="horizon-select" onchange="cambiarHorizonte()" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-sm text-white outline-none cursor-pointer">
+                        <option value="120">1 h &nbsp;(120 TPs)</option>
+                        <option value="288">2.4 h (288 TPs)</option>
+                        <option value="576">4.8 h (576 TPs)</option>
+                        <option value="1440">12 h &nbsp;(1.440 TPs)</option>
+                        <option value="2880">24 h &nbsp;(2.880 TPs)</option>
+                        <option value="5760">48 h &nbsp;(5.760 TPs)</option>
+                        <option value="8640" selected>72 h &nbsp;(8.640 TPs)</option>
+                        <option value="11520">96 h &nbsp;(11.520 TPs)</option>
+                    </select>
+                </div>
+                <div class="border-t border-slate-700/50 pt-3">
+                    <div class="text-[10px] text-slate-400 uppercase tracking-wider mb-2 font-semibold" data-i18n="addRes">Añadir Reserva de Capacidad</div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                            <label class="block text-slate-400 mb-1" data-i18n="jobName2">Nombre</label>
+                            <input id="res-name" type="text" placeholder="Reserva 1" data-i18n-placeholder="res1" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white outline-none focus:border-emerald-500 text-xs">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">CU/s</label>
+                            <input id="res-cu-per-sec" type="number" value="2" min="1" step="1" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white text-center outline-none focus:border-emerald-500 text-xs">
+                        </div>
+                    </div>
+                    <button id="btn-add-res" onclick="agregarReserva()" class="w-full mt-2 bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 rounded transition shadow cursor-pointer text-xs" data-i18n="addBtn">+ Añadir Reserva</button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col gap-3 shadow-lg">
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 border-b border-slate-700 pb-1" data-i18n="simControls">2. Control de Tiempo</h2>
+                <div class="flex justify-between items-center bg-slate-900 rounded p-2 border border-slate-700">
+                    <div id="clock-display" class="font-mono text-[15px] font-bold text-white tracking-wide w-full text-center">01/01/2026 08:00:00</div>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <span class="text-slate-400" data-i18n="speed">Velocidad:</span>
+                    <span id="speed-val" class="text-sky-400 font-bold">10 tp/s</span>
+                </div>
+                <input id="speed-slider" type="range" min="1" max="60" value="10" oninput="cambiarVelocidad()" class="w-full accent-sky-500 cursor-pointer">
+                <div class="text-[10px] text-slate-500 leading-tight my-2" data-i18n="noteDisclaimer">
+                    <strong>Nota:</strong> Simulador con propósito educativo, no para dimensionamiento real de soluciones, algunos cálculos pueden estar construidos de forma más simple a como realmente son, para facilitar su entendimiento o por no disponer de la información referente al detalle del cálculo. Utilizar la app sólo como herramienta formativa. <br>
+                    <em>Sugerencias o feedback: <a href="https://linkedin.com/in/nexus150" target="_blank" class="text-sky-400 hover:underline">linkedin.com/in/nexus150</a></em>
+                </div>
+                <div class="flex gap-2 mt-auto">
+                    <button id="btn-pause" onclick="togglePause()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 rounded transition cursor-pointer">
+                        ▶ <span data-i18n="btnStart">Iniciar reloj</span>
+                    </button>
+                    <button onclick="reiniciarSimulacion()" class="bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-medium text-xs py-2 px-3 rounded transition cursor-pointer" data-i18n="resetBtn">
+                        Reset
+                    </button>
+                </div>
+                <div class="flex gap-2 mt-2">
+                    <button onclick="exportarSimulacion()" title="Guardar simulación a fichero local" class="flex-1 bg-indigo-700 hover:bg-indigo-600 border border-indigo-600 text-white font-medium text-xs py-1.5 rounded transition cursor-pointer">
+                        ↓ <span data-i18n="exportBtn">Exportar</span>
+                    </button>
+                    <button onclick="document.getElementById('import-file-2').click()" title="Cargar simulación desde fichero" class="flex-1 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-white font-medium text-xs py-1.5 rounded transition cursor-pointer">
+                        ↑ <span data-i18n="importBtn">Importar</span>
+                    </button>
+                    <input type="file" id="import-file-2" class="hidden" accept=".json" onchange="importarSimulacion(event)">
+                </div>
+
+            </div>
+
+            <div class="bg-slate-800 p-4 rounded-xl border border-sky-900 flex flex-col gap-3 shadow-lg lg:col-span-2 relative">
+                <div id="throttle-overlay" class="absolute inset-0 bg-slate-900/80 backdrop-blur-[1px] z-10 hidden flex-col items-center justify-center rounded-xl border border-red-500">
+                    <span class="text-red-400 font-bold text-lg mb-1">BACKGROUND REJECTION</span>
+                    <span class="text-slate-300 text-xs" data-i18n="throttleBgDesc">La capacidad está colapsada. No se admiten nuevos trabajos.</span>
+                </div>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-sky-400 border-b border-slate-700 pb-1 flex justify-between items-center">
+                    <span data-i18n="jobInj">3. Inyectar Consumo</span>
+                    <span class="text-sky-200 bg-sky-900/50 px-2 py-0.5 rounded text-[10px]"><span data-i18n="activeJobsH">Activos:</span> <span id="active-jobs-count" class="font-bold text-white">0</span></span>
+                </h2>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs items-end">
+                    <div class="col-span-1">
+                        <label class="block text-slate-400 mb-1" data-i18n="exp">Experiencia</label>
+                        <select id="job-exp" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white cursor-pointer"><option>AS</option><option>DMS</option><option>ES</option><option>Kusto</option><option>lake</option><option>Reflex</option></select>
+                    </div>
+                    <div class="col-span-1 md:col-span-2">
+                        <label class="block text-slate-400 mb-1" data-i18n="jobName">Nombre</label>
+                        <input id="job-name" type="text" placeholder="Ej: ETL Ventas (vacío = nombre automático)" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white outline-none focus:border-sky-500">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-slate-400 mb-1" data-i18n="cusToConsume">Total CUs</label>
+                        <input id="job-cus" type="text" value="28800" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white text-center outline-none focus:border-sky-500">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block text-slate-400 mb-1" data-i18n="jobType">Tipo</label>
+                        <select id="job-type" onchange="cambiarTipoTrabajo()" class="w-full bg-slate-900 border border-slate-600 rounded p-1.5 text-white cursor-pointer">
+                            <option value="Interactive" data-i18n="alerts.jobIntType">Interactive</option><option value="Background" selected data-i18n="alerts.jobBgType">Background</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs items-end mt-1">
+                    <div class="col-span-2 flex items-center gap-3 bg-slate-900/50 p-2 rounded border border-slate-700/50">
+                        <label class="text-slate-400 whitespace-nowrap">Smoothing:</label>
+                        <select id="job-smoothing" class="bg-slate-900 border border-slate-600 rounded p-1 text-white w-full cursor-pointer" disabled></select>
+                    </div>
+                    <div class="col-span-1">
+                        <button id="btn-add-job" onclick="guardarTrabajo()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-1.5 rounded transition shadow-lg cursor-pointer" data-i18n="saveBtn">+ Guardar Consumo</button>
+                    </div>
+                </div>
+                <div class="text-[10px] text-slate-500 leading-tight mt-2 border-t border-slate-700/50 pt-2" data-i18n="noteJob">
+                    <strong>Nota:</strong> Cada consumo que se carga es un trabajo que ya está terminado, y se reporta su costo total ya alisado. En escenarios reales, dependiendo del artefacto el consumo se puede reportar continuamente o varias veces, pero en esta app, para optimizar su propósito educativo se cargan de esta manera, y con el escenario más común.
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col">
+                <div class="flex justify-between items-center mb-2">
+                    <div class="flex items-center gap-3">
+                        <h3 class="text-sm font-bold text-slate-200" data-i18n="chartTitle">Evolución de Consumo y Deuda (Overage Bucket)</h3>
+                        <span id="status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" data-i18n="alerts.throttleOk">Saludable</span>
+                        <span class="text-[10px] text-slate-400 font-normal italic lowercase" data-i18n="chartSub">(en el timepoint más reciente de la simulación, si quiere ver los históricos haga click en un timepoint en el visual y revise la sección "Auditoría de Timepoint")</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <div class="flex gap-4 text-xs bg-slate-900 px-3 py-1.5 rounded border border-slate-700">
+                            <span class="flex items-center gap-1.5 text-slate-300"><span class="w-4 h-1.5 bg-red-500 inline-block rounded"></span>Límite</span>
+                            <span class="flex items-center gap-1.5 text-slate-300"><span class="w-3 h-3 bg-red-500/80 inline-block rounded-sm"></span>Interactive</span>
+                            <span class="flex items-center gap-1.5 text-slate-300"><span class="w-3 h-3 bg-blue-500/80 inline-block rounded-sm"></span>Background</span>
+                            <span class="flex items-center gap-1.5 text-slate-300"><span class="w-3 h-0.5 inline-block" style="border-top:2px dashed #f59e0b"></span>TP Sel.</span>
+                        </div>
+                        <button onclick="resetarZoom()" title="Restablecer vista y reactivar seguimiento" class="bg-slate-700 hover:bg-slate-600 text-slate-200 text-[10px] font-medium px-2.5 py-1.5 rounded border border-slate-600 transition cursor-pointer whitespace-nowrap" data-i18n="resetView">⤢ Reset Vista</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 mb-3 pb-2 border-b border-slate-700/50">
+                    <button onclick="zoomMinChart()" title="Mostrar todos los datos" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold px-2 py-1 rounded border border-slate-600 transition cursor-pointer uppercase tracking-widest leading-none flex items-center justify-center select-none" data-i18n="btnMin">Min</button>
+                    <button onclick="zoomOutChart()" title="Zoom out" class="bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold w-7 h-7 rounded border border-slate-600 transition cursor-pointer leading-none flex items-center justify-center select-none">−</button>
+                    <button onclick="zoomInChart()" title="Zoom in" class="bg-slate-700 hover:bg-slate-600 text-white text-sm font-bold w-7 h-7 rounded border border-slate-600 transition cursor-pointer leading-none flex items-center justify-center select-none">+</button>
+                    <button onclick="zoomMaxChart()" title="Acercar al máximo" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold px-2 py-1 mr-1 rounded border border-slate-600 transition cursor-pointer uppercase tracking-widest leading-none flex items-center justify-center select-none" data-i18n="btnMax">Max</button>
+                    <button onclick="zoomSelChart()" title="Acercar al TP seleccionado" class="bg-slate-700 hover:bg-slate-600 text-slate-300 text-[10px] font-bold px-2 py-1 mr-2 rounded border border-slate-600 transition cursor-pointer uppercase tracking-widest leading-none flex items-center justify-center select-none" data-i18n="btnSel">Sel TP</button>
+                    
+                    <button onclick="panChart(-1)" title="Mover a la izquierda" class="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold w-6 h-6 rounded border border-slate-600 transition cursor-pointer leading-none flex items-center justify-center select-none ml-2">◀</button>
+                    <select id="pan-hours-select" class="bg-slate-800 border border-slate-600 rounded px-1.5 py-1 text-[10px] text-slate-300 outline-none cursor-pointer" title="Mover gráfica N Horas">
+                        <option value="1">1 H</option><option value="2">2 H</option><option value="4">4 H</option>
+                        <option value="6">6 H</option><option value="8">8 H</option><option value="12">12 H</option>
+                        <option value="24">24 H</option><option value="36">36 H</option><option value="72">72 H</option>
+                    </select>
+                    <button onclick="panChart(1)" title="Mover a la derecha" class="bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold w-6 h-6 rounded border border-slate-600 transition cursor-pointer leading-none flex items-center justify-center select-none mr-2">▶</button>
+                    <span id="chart-range-label" class="text-[10px] text-slate-400 font-mono ml-1">Vista: --</span>
+                    
+                    <div class="ml-auto flex items-center gap-2">
+                        <button id="btn-pause-capacity" onclick="togglePausarCapacidad()" class="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow cursor-pointer uppercase tracking-wide">⏸ <span data-i18n="pauseCap">Pausar capacidad</span></button>
+                        <select id="pause-target" class="bg-slate-800 border border-slate-600 rounded px-2 py-1 text-[10px] text-slate-300 outline-none cursor-pointer">
+                            <option value="last" data-i18n="lastTp">En último TP</option>
+                            <option value="selected" data-i18n="selTp">En TP Seleccionado</option>
+                        </select>
+                        <span id="tp-selected-label" class="text-[10px] text-amber-400 font-mono" data-i18n="noSelection">Sin selección</span>
+                        <button id="btn-prev-tp-sel" onclick="moverSeleccionTp(-1)" class="hidden text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 px-1 rounded transition text-[10px] ml-1" title="TP Anterior">◀</button>
+                        <button id="btn-next-tp-sel" onclick="moverSeleccionTp(1)" class="hidden text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-700 px-1 rounded transition text-[10px] ml-1" title="TP Siguiente">▶</button>
+                        <button id="btn-clear-tp" onclick="quitarSeleccionTp()" class="hidden text-slate-400 hover:text-rose-400 text-xs ml-1 transition cursor-pointer" title="Quitar selección">✖</button>
+                    </div>
+                </div>
+                <div id="horizon-full-msg" class="hidden bg-amber-900/30 border border-amber-700/50 text-amber-300 text-xs text-center py-1.5 px-3 rounded mb-2">
+                    ⚠️ Horizonte temporal lleno. Reinicia la simulación o amplía el horizonte para continuar.
+                </div>
+                <div class="w-full h-[400px] relative">
+                    <canvas id="fabricChart" class="clickable-canvas"></canvas>
+                </div>
+                <p class="text-center text-[10px] text-slate-400 mt-2" data-i18n="chartHint">Haz clic para auditoría del TP &nbsp;·&nbsp; <span class="text-slate-500">+ / − = Zoom &nbsp;·&nbsp; Arrastra = Navegar</span> &nbsp;·&nbsp; Haz clic en tabla para resaltar trabajo</p>
+                <div id="table-container" class="mt-4 border-t border-slate-700/50 pt-4">
+                    <div class="flex items-center justify-between mb-2 min-h-[24px]">
+                        <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider" data-i18n="audit">Análisis del Timepoint</h3>
+                        <div id="table-pagination" class="hidden items-center gap-2">
+                            <span id="table-info" class="text-[10px] text-slate-500"></span>
+                            <button id="btn-table-prev" onclick="tablePrevPage()" class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[10px] px-2 py-0.5 rounded transition cursor-pointer">◀</button>
+                            <span id="table-page-info" class="text-[10px] text-slate-400 font-mono min-w-[56px] text-center">Pág 1/1</span>
+                            <button id="btn-table-next" onclick="tableNextPage()" class="bg-slate-700 hover:bg-slate-600 disabled:opacity-30 disabled:cursor-not-allowed text-white text-[10px] px-2 py-0.5 rounded transition cursor-pointer">▶</button>
+                        </div>
+                    </div>
+                    <div id="table-empty" class="flex flex-col items-center justify-center py-5 text-slate-600 gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M3 6h18M3 14h12M3 18h8"/></svg>
+                        <span class="text-[10px]">Selecciona un timepoint en la gráfica</span>
+                    </div>
+                    <div id="table-data" class="hidden">
+                        <div class="overflow-x-auto rounded border border-slate-700">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="bg-slate-900 text-slate-400 border-b border-slate-700">
+                                        <th onclick="sortTable('exp')" class="px-3 py-2 text-left cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="exp">Experiencia</span> <span id="sort-exp" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('name')" class="px-3 py-2 text-left cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="jobName2">Nombre</span> <span id="sort-name" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('type')" class="px-3 py-2 text-left cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="jobType2">Tipo</span> <span id="sort-type" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('totalCUs')" class="px-3 py-2 text-right cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="cusToConsume">Total CUs</span> <span id="sort-totalCUs" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('tpCUs')" class="px-3 py-2 text-right cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="tpCus">TP CUs</span> <span id="sort-tpCUs" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('begin')" class="px-3 py-2 text-left cursor-pointer hover:text-sky-400 select-none whitespace-nowrap">Smoothing Begin <span id="sort-begin" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('end')" class="px-3 py-2 text-left cursor-pointer hover:text-sky-400 select-none whitespace-nowrap">Smoothing End <span id="sort-end" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('paid')" class="px-3 py-2 text-right cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="consumedCus">CUs Pagadas</span> <span id="sort-paid" class="opacity-50">↕</span></th>
+                                        <th onclick="sortTable('pending')" class="px-3 py-2 text-right cursor-pointer hover:text-sky-400 select-none whitespace-nowrap"><span data-i18n="pendCus">CUs Pendientes</span> <span id="sort-pending" class="opacity-50">↕</span></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mt-6">
+            <!-- Panel: TP Anterior (ap) -->
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow flex flex-col">
+                <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-700/50 pb-2 mb-4" data-i18n="tpPrev">← Timepoint Anterior</h3>
+                <div id="ap-empty" class="flex-1 flex items-center justify-center flex-col text-slate-600 gap-2 py-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <span class="text-[10px] text-center px-4" data-i18n="tpPrevEmpty">Sin datos de timepoint anterior</span>
+                </div>
+                <div id="ap-data" class="hidden flex-col gap-2 text-sm">
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="timeAnalized">Momento Analizado</div><div id="ap-time" class="font-mono font-bold text-white text-xs">--</div></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="consumedCus">CUs Consumidas</div><div id="ap-cus" class="font-mono font-bold text-white text-xs">--</div></div>
+                        <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="capPct">% Capacidad</div><div id="ap-cap" class="font-mono font-bold text-white text-xs">--</div></div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="margin">Margen del Timepoint</div><div id="ap-margin" class="font-mono font-bold text-xs">--</div><p id="ap-margin-desc" class="text-[10px] text-slate-400 mt-1 line-clamp-2"></p></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50 relative overflow-hidden"><div id="ap-debt-line" class="absolute right-0 top-0 bottom-0 w-1 bg-slate-600"></div><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="debtVal">Deuda Total Acumulada</div><div id="ap-debt-val" class="font-mono font-bold text-sm text-white">--</div><div id="ap-debt-mins" class="text-[10px] text-slate-400 font-bold mt-0.5">--</div></div>
+                    <div id="ap-capstate" class="bg-green-900/20 p-2 rounded border border-green-700/50 text-center"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1" data-i18n="capState">Estado de la Capacidad</div><div id="ap-capstate-badge" class="font-bold text-xs uppercase tracking-wide text-green-400">--</div><div id="ap-capstate-delta" class="text-[10px] text-slate-400 mt-0.5">--</div></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="throttleState">Estado de Throttling</div><div id="ap-status" class="font-bold text-green-400 uppercase tracking-wider text-[10px]">--</div></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50">
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1.5" data-i18n="tpContrib">Contribución de este TP en cada ventana</div>
+                        <div id="ap-tp-contrib" class="grid grid-cols-3 gap-1"></div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50">
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1.5" data-i18n="futureCommit">Comprometido en ventanas futuras</div>
+                        <div id="ap-fut-windows" class="flex flex-col gap-1.5"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: TP Actual (ac) - destacado -->
+            <div class="bg-slate-800 p-4 rounded-xl border border-sky-700/50 shadow-lg flex flex-col">
+                <div class="flex justify-between items-center border-b border-slate-700 pb-2 mb-4">
+                    <h3 class="text-sm font-bold text-sky-300" data-i18n="audit">Auditoría de Timepoint</h3>
+                    <div class="flex gap-1.5">
+                        <button id="btn-tp-prev" onclick="navTimepoint(-1)" disabled class="bg-slate-700/40 text-slate-600 text-[10px] px-2 py-1 rounded font-medium cursor-not-allowed">◀ <span data-i18n="tpPrevBtn">TP Anterior</span></button>
+                        <button id="btn-tp-next" onclick="navTimepoint(1)" disabled class="bg-slate-700/40 text-slate-600 text-[10px] px-2 py-1 rounded font-medium cursor-not-allowed"><span data-i18n="tpNextBtn">TP Siguiente</span> ▶</button>
+                    </div>
+                </div>
+                <div id="ac-empty" class="flex-1 flex items-center justify-center flex-col text-slate-500 gap-2 py-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <span class="text-xs text-center px-4" data-i18n="auditEmpty">Selecciona un punto temporal en la gráfica para analizar el estado de la bolsa de deuda.</span>
+                </div>
+                <div id="ac-data" class="hidden flex-col gap-3 text-sm">
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-600"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="timeAnalized">Momento Analizado</div><div id="ac-time" class="font-mono font-bold text-sky-300 text-base">--</div></div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-600"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="consumedCus">CUs Consumidas</div><div id="ac-cus" class="font-mono font-bold text-white">--</div></div>
+                        <div class="bg-slate-900 p-3 rounded-lg border border-slate-600"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="capPct">% Capacidad</div><div id="ac-cap" class="font-mono font-bold text-white">--</div></div>
+                    </div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-600"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="margin">Margen del Timepoint</div><div id="ac-margin" class="font-mono font-bold">--</div><p id="ac-margin-desc" class="text-[10px] text-slate-400 mt-1 line-clamp-2"></p></div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-sky-800/50 relative overflow-hidden"><div id="ac-debt-line" class="absolute right-0 top-0 bottom-0 w-1 bg-sky-500"></div><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="debtVal">Deuda Total Acumulada (Bucket)</div><div id="ac-debt-val" class="font-mono font-bold text-xl text-white">--</div><div id="ac-debt-mins" class="text-xs text-sky-300 font-bold mt-0.5">--</div></div>
+                    <div id="ac-capstate" class="bg-green-900/20 p-3 rounded-lg border border-green-700/50 text-center"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1.5" data-i18n="capState">Estado de la Capacidad</div><div id="ac-capstate-badge" class="font-bold text-sm uppercase tracking-wide text-green-400">--</div><div id="ac-capstate-delta" class="text-xs text-slate-400 mt-1">--</div></div>
+                    <div class="bg-slate-900 p-3 rounded-lg border border-slate-600"><div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1" data-i18n="throttleState">Estado de Throttling</div><div id="ac-status" class="font-bold text-green-400 uppercase tracking-wider text-sm">--</div></div>
+                    <div class="bg-slate-900 p-2.5 rounded-lg border border-slate-600">
+                        <div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1.5" data-i18n="tpContrib">Contribución de este TP en cada ventana</div>
+                        <div id="ac-tp-contrib" class="grid grid-cols-3 gap-1.5"></div>
+                    </div>
+                    <div class="bg-slate-900 p-2.5 rounded-lg border border-slate-600">
+                        <div class="text-[10px] text-slate-200 uppercase tracking-wider mb-1.5" data-i18n="futureCommit">Comprometido en ventanas futuras</div>
+                        <div id="ac-fut-windows" class="flex flex-col gap-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Panel: TP Siguiente (an) -->
+            <div class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 shadow flex flex-col">
+                <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-700/50 pb-2 mb-4" data-i18n="tpNext">Timepoint Siguiente →</h3>
+                <div id="an-empty" class="flex-1 flex items-center justify-center flex-col text-slate-600 gap-2 py-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    <span class="text-[10px] text-center px-4" data-i18n="tpNextEmpty">Sin datos de timepoint siguiente</span>
+                </div>
+                <div id="an-data" class="hidden flex-col gap-2 text-sm">
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="timeAnalized">Momento Analizado</div><div id="an-time" class="font-mono font-bold text-white text-xs">--</div></div>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="consumedCus">CUs Consumidas</div><div id="an-cus" class="font-mono font-bold text-white text-xs">--</div></div>
+                        <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="capPct">% Capacidad</div><div id="an-cap" class="font-mono font-bold text-white text-xs">--</div></div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="margin">Margen del Timepoint</div><div id="an-margin" class="font-mono font-bold text-xs">--</div><p id="an-margin-desc" class="text-[10px] text-slate-400 mt-1 line-clamp-2"></p></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50 relative overflow-hidden"><div id="an-debt-line" class="absolute right-0 top-0 bottom-0 w-1 bg-slate-600"></div><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="debtVal">Deuda Total Acumulada</div><div id="an-debt-val" class="font-mono font-bold text-sm text-white">--</div><div id="an-debt-mins" class="text-[10px] text-slate-400 font-bold mt-0.5">--</div></div>
+                    <div id="an-capstate" class="bg-green-900/20 p-2 rounded border border-green-700/50 text-center"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1" data-i18n="capState">Estado de la Capacidad</div><div id="an-capstate-badge" class="font-bold text-xs uppercase tracking-wide text-green-400">--</div><div id="an-capstate-delta" class="text-[10px] text-slate-400 mt-0.5">--</div></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50"><div class="text-[10px] text-slate-300 uppercase tracking-wider mb-0.5" data-i18n="throttleState">Estado de Throttling</div><div id="an-status" class="font-bold text-green-400 uppercase tracking-wider text-[10px]">--</div></div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50">
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1.5" data-i18n="tpContrib">Contribución de este TP en cada ventana</div>
+                        <div id="an-tp-contrib" class="grid grid-cols-3 gap-1"></div>
+                    </div>
+                    <div class="bg-slate-900/60 p-2 rounded border border-slate-700/50">
+                        <div class="text-[10px] text-slate-300 uppercase tracking-wider mb-1.5" data-i18n="futureCommit">Comprometido en ventanas futuras</div>
+                        <div id="an-fut-windows" class="flex flex-col gap-1.5"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sección de Facturación -->
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg mt-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-sm font-bold text-slate-200" data-i18n="billingTable">💳 Facturación por Hora</h3>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-4 gap-4">
+                <div class="xl:col-span-3">
+                    <div id="billing-empty" class="flex items-center justify-center py-10 text-slate-600 text-xs gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                        <span data-i18n="billingEmpty">Inicia la simulación para ver el detalle de facturación</span>
+                    </div>
+                    <div id="billing-table-container" class="hidden overflow-x-auto rounded border border-slate-700">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="bg-slate-900 text-slate-400 border-b border-slate-700 text-[10px]">
+                                    <th class="px-2 py-2 text-left whitespace-nowrap" data-i18n="hourClock">Hora (reloj sim.)</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap" data-i18n="cusCap">CUs Cap.</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-emerald-400" data-i18n="cusRes">CUs Reserva</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-amber-400" data-i18n="cusPayg">CUs PAYG</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-emerald-400" data-i18n="costRes">Coste Reserva</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-amber-400" data-i18n="costPayg">Coste PAYG</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap font-bold text-white" data-i18n="costTotal">Coste Total</th>
+                                    <th class="px-2 py-2 text-left whitespace-nowrap" data-i18n="activeResTable">Reservas activas</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-sky-400" data-i18n="resUnused">Rsv. no aprovechada (CUs)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billing-tbody"></tbody>
+                            <tfoot>
+                                <tr class="bg-slate-900/60 border-t-2 border-slate-600 text-[10px]">
+                                    <td class="px-2 py-2 text-slate-300 font-bold" data-i18n="total">TOTAL</td>
+                                    <td id="billing-total-cap" class="px-2 py-2 text-right font-mono text-slate-300">--</td>
+                                    <td id="billing-total-res-cus" class="px-2 py-2 text-right font-mono text-emerald-400 font-bold">--</td>
+                                    <td id="billing-total-payg-cus" class="px-2 py-2 text-right font-mono text-amber-400 font-bold">--</td>
+                                    <td id="billing-total-res-eur" class="px-2 py-2 text-right font-mono text-emerald-400 font-bold">--</td>
+                                    <td id="billing-total-payg-eur" class="px-2 py-2 text-right font-mono text-amber-400 font-bold">--</td>
+                                    <td id="billing-total-eur" class="px-2 py-2 text-right font-mono font-bold text-white">--</td>
+                                    <td></td>
+                                    <td id="billing-total-res-unused" class="px-2 py-2 text-right font-mono text-sky-400 font-bold">--</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="xl:col-span-1">
+                    <h4 class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2" data-i18n="activeResTable">Reservas Activas</h4>
+                    <div class="rounded border border-slate-700">
+                        <div id="reservations-empty" class="py-8 text-center text-slate-600 text-[10px]" data-i18n="resEmpty">Sin reservas activas</div>
+                        <table id="reservations-table" class="w-full hidden">
+                            <thead>
+                                <tr class="bg-slate-900 text-slate-400 border-b border-slate-700 text-[10px]">
+                                    <th class="px-2 py-1.5 text-left" data-i18n="jobName2">Nombre</th>
+                                    <th class="px-2 py-1.5 text-right">CU/s</th>
+                                    <th class="px-2 py-1.5 text-left" data-i18n="start">Inicio</th>
+                                    <th class="px-2 py-1.5 text-center">✕</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reservations-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <h4 class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-4 mb-2" data-i18n="eventLog">Registro de Eventos</h4>
+                    <div class="rounded border border-slate-700">
+                        <div id="event-log-empty" class="py-4 text-center text-slate-600 text-[10px]" data-i18n="eventLogEmpty">Sin eventos registrados</div>
+                        <div id="event-log-container" class="hidden max-h-64 overflow-y-auto">
+                            <table class="w-full text-[10px] text-left">
+                                <thead class="sticky top-0 bg-slate-900 border-b border-slate-700">
+                                    <tr class="text-slate-400">
+                                        <th class="px-2 py-1.5 font-semibold" data-i18n="timepoint">Timepoint</th>
+                                        <th class="px-2 py-1.5 font-semibold" data-i18n="event">Evento</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="event-log-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TP_SECONDS = 30;
+        let CHART_MAX_TPS = 8640;
+        let defaultChartWindow = 120;
+        let lastChartUpdate = 0;
+
+const i18n = {
+    es: {
+        title: "Simulador de Consumo de CUs de Fabric",
+        realTotal: "💳 Real (Total)",
+        realRes: "Real (Reserva)",
+        realPayg: "Real (PAYG)",
+        escenPayg: "Escen. Todo PAYG",
+        escenRes: "Escen. Todo Reserva",
+        infra: "1. Infraestructura",
+        pricePayg: "Precio F2/H (PAYG)",
+        priceRes: "Precio F2/H (Res)",
+        currency: "Divisa",
+        sku: "Capacidad Contratada (SKU)",
+        horizon: "Horizonte Temporal",
+        exportBtn: "Exportar",
+        importBtn: "Importar",
+        addRes: "Añadir Reserva de Capacidad",
+        qty: "Cantidad",
+        addBtn: "Añadir",
+        resType: "Tipo de Reserva",
+        simControls: "2. Control de Tiempo",
+        speed: "Velocidad:",
+        resetBtn: "Reset",
+        jobInj: "3. Inyección de Trabajos",
+        jobName: "Nombre del Job",
+        jobType: "Tipo de Job",
+        cusToConsume: "CUs a Consumir",
+        saveBtn: "Guardar",
+        btnMin: "min",
+        pauseCap: "Pausar Capacidad",
+        pauseCapShort: "Pausar Capacidad",
+        resumeCap: "Reanudar Capacidad",
+        eventPauseCap: "Capacidad Pausada",
+        eventResumeCap: "Capacidad Reanudada",
+        pauseClock: "Pausar reloj",
+        startClock: "Iniciar reloj",
+        capPaused: "Capacidad Pausada",
+        jobAdded: "Añadido",
+        clearData: "Limpiar y Reiniciar todo",
+        noteDisclaimer: "<strong>Nota:</strong> Simulador con propósito educativo, no para dimensionamiento real de soluciones, algunos cálculos pueden estar construidos de forma más simple a como realmente son, para facilitar su entendimiento o por no disponer de la información referente al detalle del cálculo. Utilizar la app sólo como herramienta formativa. <br><em>Sugerencias o feedback: <a href=\"https://linkedin.com/in/nexus150\" target=\"_blank\" class=\"text-sky-400 hover:underline\">linkedin.com/in/nexus150</a></em>",
+        noteJob: "<strong>Nota:</strong> Cada consumo que se carga es un trabajo que ya está terminado, y se reporta su costo total ya alisado. En escenarios reales, dependiendo del artefacto el consumo se puede reportar continuamente o varias veces, pero en esta app, para optimizar su propósito educativo se cargan de esta manera, y con el escenario más común.",
+        jobPreview: "Análisis de Trabajos",
+        chartTitle: "Evolución de Consumo y Deuda (Overage Bucket)",
+        btnMax: "max",
+        btnSel: "sel tp",
+        lockedFull: "Bloqueado (Capacidad Llena)",
+        lockedInt: "Interactive Bloqueado",
+        tpPrev: "TP Previo",
+        moveChart: "Mover gráfica",
+        hours: "Horas",
+        audit: "Análisis del Timepoint",
+        activeJobs: "Trabajos Activos en este TP",
+        consumedCus: "CUs Consumidas",
+        capPct: "% de Capacidad",
+        margin: "Margen del TP",
+        debtVal: "Deuda Acumulada",
+        debtMins: "Equivalente en Tiempo",
+        capState: "Estado de la Capacidad",
+        tpContrib: "Contrib. de este TP a cada ventana",
+        futureCommit: "Comprometido en ventanas futuras",
+        billingTable: "Facturación por Horas",
+        date: "Fecha",
+        hour: "Hora",
+        capCus: "Capacidad (CUs)",
+        consRealCus: "Consumo Real (CUs)",
+        debtResCus: "Deuda Acumulada",
+        paygCus: "PAYG (CUs)",
+        resCus: "Reserva (CUs)",
+        costEst: "Costo Est.",
+        ttJobs: "trab.",
+        ttTotal: "Total",
+        ttDebt: "Deuda Acumulada",
+        ttFut10: "Consumo Futuro (10m)",
+        ttFut60: "Consumo Futuro (60m)",
+        ttFut24: "Consumo Futuro (24h)",
+        jobDetail: "Detalle de Consumos en el TP Seleccionado",
+        jobId: "ID Trabajo",
+        jobName2: "Nombre Trabajo",
+        jobType2: "Tipo",
+        tpCus: "TP CUs",
+        pendCus: "CUs Pendientes",
+        tpPct: "% TP",
+        btnStart: "Iniciar reloj",
+        activeJobsH: "Activos:",
+        throttleBgDesc: "La capacidad está colapsada. No se admiten nuevos trabajos.",
+        chartSub: "(en el timepoint más reciente de la simulación, si quiere ver los históricos haga click en un timepoint en el visual y revise la sección 'Auditoría de Timepoint')",
+        noSelection: "Sin selección",
+        chartHint: "Haz clic para auditoría del TP &nbsp;·&nbsp; <span class='text-slate-500'>+ / - = Zoom &nbsp;·&nbsp; Arrastra = Navegar</span> &nbsp;·&nbsp; Haz clic en tabla para resaltar trabajo",
+        timeAnalized: "Momento Analizado",
+        activeResTable: "Reservas Activas",
+        res1: "Reserva 1",
+        lastTp: "En último TP",
+        selTp: "En TP Seleccionado",
+        billingEmpty: "Inicia la simulación para ver el detalle de facturación",
+        hourClock: "Hora (reloj sim.)",
+        cusCap: "CUs Cap.",
+        cusRes: "CUs Reserva",
+        cusPayg: "CUs PAYG",
+        costRes: "Coste Reserva",
+        costPayg: "Coste PAYG",
+        costTotal: "Coste Total",
+        resUnused: "Rsv. no aprovechada (CUs)",
+        total: "TOTAL",
+        resEmpty: "Sin reservas activas",
+        start: "Inicio",
+        nextMin: "Próx. {0} min",
+        nextHr: "Próx. {0} h",
+        hrOption: "horas",
+        view: "Vista",
+        resetView: "Ver en Vivo",
+        throttleState: "Estado de Throttling",
+        tpPrev: "Timepoint Anterior",
+        tpPrevEmpty: "Sin datos de timepoint anterior",
+        tpPrevBtn: "TP Anterior",
+        tpNext: "Timepoint Siguiente",
+        tpNextEmpty: "Sin datos de timepoint siguiente",
+        tpNextBtn: "TP Siguiente",
+        debtLiq: "Liquidación de Deuda",
+        auditEmpty: "Selecciona un punto temporal en la gráfica para analizar el estado de la bolsa de deuda.",
+        numberFormat: "Formato Numérico:",
+        dateFormat: "Formato de Fecha:",
+        alerts: {
+            confirmFormatChange: "Cambiar el formato de número o fecha reiniciará la simulación. ¿Deseas continuar?",
+            errorImport: "Error importando: ",
+            invalidVer: "Fichero incompatible.",
+            invalidVer1: "Fichero incompatible: Este es un archivo de versión 1.0 (pesado). Usa la exportación minimalista.",
+            invalidFile: "Error exportando: ",
+            surePause: "¿Está seguro de querer Pausar la capacidad?",
+            pauseWarn: "Tenga en cuenta que todos los trabajos en curso terminarán, y todo el consumo excedente y suavizado se agregará a la factura de Azure.",
+            pauseWarn2: "Igualmente, al reanudar, la capacidad estará disponible sin deudas acumuladas ni throttling.",
+            btnYesPause: "Sí, Pausar",
+            btnNoPause: "No, me lo pienso mejor",
+            fillFields: "Por favor, rellena todos los campos del trabajo.",
+            addSuccess: "Reserva añadida.",
+            selectValidTp: "Debes seleccionar un Timepoint válido haciendo clic en la gráfica primero.",
+            pauseErrFut: "No se puede pausar en este Timepoint porque ya existe una suspensión futura (en el {0}).",
+            throttleRej: "Rejection",
+            throttleDelay: "Delay",
+            throttleOk: "Saludable",
+            burnDown: "Burn-down",
+            accum: "Acumulando",
+            paused: "Pausado",
+            bucketLiq: "Bucket liquidado (CUs 0)",
+            bucketEmpty: "Bucket vacío",
+            eqMin: "Equivale a {0} min. de consumo",
+            eqHr: "Equivale a {0} horas de consumo",
+            marginEx: "+{0}% Exceso",
+            marginExDesc: "Has consumido {0} CUs por encima del límite. Esto engrosa el bucket de deuda.",
+            marginSave: "{0}% Margen (Ahorro)",
+            marginSaveDesc1: "Te han sobrado {0} CUs. El motor los ha usado para hacer Burn-down de la deuda acumulada.",
+            marginSaveDesc2: "Te han sobrado {0} CUs. El sistema estaba saludable sin deuda, por lo que este excedente se pierde.",
+            marginLimit: "0% (Al Límite)",
+            marginLimitDesc: "Has consumido exactamente la capacidad contratada. La deuda no sube ni baja.",
+            stateOverageThrot: "Overage · Throttling",
+            stateOverageAccum: "Overage · Acumulando",
+            stateBurnDown: "Burn-Down",
+            stateHealthy: "Saludable",
+            deltaAdd: "+{0} CUs añadidos al bucket",
+            deltaPaid: "{0} CUs pagados (Burn-Down)",
+            deltaNone: "Deuda sin cambios",
+            jobInt: "Trabajo Interactivo {0}",
+            jobBg: "Trabajo Background {0}",
+            jobIntType: "Interactivo",
+            jobBgType: "Segundo Plano",
+            tpShort: "TP {0}"
+        }
+    },
+    en: {
+        title: "Fabric CU Consumption Simulator",
+        realTotal: "💳 Real (Total)",
+        realRes: "Real (Reserved)",
+        realPayg: "Real (PAYG)",
+        escenPayg: "Scen. All PAYG",
+        escenRes: "Scen. All Reserved",
+        infra: "1. Infrastructure",
+        pricePayg: "Price F2/H (PAYG)",
+        priceRes: "Price F2/H (Res)",
+        currency: "Currency",
+        sku: "Purchased Capacity (SKU)",
+        horizon: "Time Horizon",
+        exportBtn: "Export",
+        importBtn: "Import",
+        addRes: "Add Capacity Reservation",
+        qty: "Quantity",
+        addBtn: "Add",
+        resType: "Reservation Type",
+        simControls: "2. Time Control",
+        speed: "Speed:",
+        resetBtn: "Reset",
+        jobInj: "3. Job Injection",
+        jobName: "New Job",
+        jobType: "Job Type",
+        cusToConsume: "CUs to Consume",
+        saveBtn: "Save",
+        btnMin: "min",
+        pauseCap: "Pause Capacity",
+        pauseCapShort: "Pause Capacity",
+        resumeCap: "Resume Capacity",
+        eventPauseCap: "Capacity Paused",
+        eventResumeCap: "Capacity Resumed",
+        pauseClock: "Pause clock",
+        startClock: "Start clock",
+        capPaused: "Capacity Paused",
+        jobAdded: "Added",
+        clearData: "Clear & Reset All",
+        noteDisclaimer: "<strong>Note:</strong> Simulator for educational purposes, not for real solution sizing. Some calculations might be simplified for easier understanding or due to lack of detailed calculation information. Use the app only as a training tool. <br><em>Suggestions or feedback: <a href=\"https://linkedin.com/in/nexus150\" target=\"_blank\" class=\"text-sky-400 hover:underline\">linkedin.com/in/nexus150</a></em>",
+        noteJob: "<strong>Note:</strong> Each loaded consumption is a finished job, reporting its total smoothed cost. In real scenarios, depending on the artifact, consumption can be reported continuously or multiple times. For educational optimization, they are loaded this way here, reflecting the most common scenario.",
+        jobPreview: "Job Analysis",
+        chartTitle: "Consumption and Debt (Overage Bucket) Evolution",
+        btnMax: "max",
+        btnSel: "sel tp",
+        lockedFull: "Locked (Capacity Full)",
+        lockedInt: "Interactive Locked",
+        tpPrev: "Prev TP",
+        moveChart: "Move chart",
+        hours: "Hours",
+        audit: "Timepoint Analysis",
+        activeJobs: "Active Jobs in this TP",
+        consumedCus: "Consumed CUs",
+        capPct: "% of Capacity",
+        margin: "TP Margin",
+        debtVal: "Accumulated Debt",
+        debtMins: "Time Equivalent",
+        capState: "Capacity State",
+        tpContrib: "TP Contrib. to each window",
+        futureCommit: "Committed in future windows",
+        billingTable: "Hourly Billing",
+        date: "Date",
+        hour: "Hour",
+        capCus: "Capacity (CUs)",
+        consRealCus: "Real Consumption (CUs)",
+        debtResCus: "Accumulated Debt",
+        paygCus: "PAYG (CUs)",
+        resCus: "Reserved (CUs)",
+        costEst: "Est. Cost",
+        ttJobs: "jobs",
+        ttTotal: "Total",
+        ttDebt: "Accumulated Debt",
+        ttFut10: "Future Consumption (10m)",
+        ttFut60: "Future Consumption (60m)",
+        ttFut24: "Future Consumption (24h)",
+        jobDetail: "Consumption Detail in Selected TP",
+        jobId: "Job ID",
+        jobName2: "Job Name",
+        jobType2: "Type",
+        tpCus: "TP CUs",
+        pendCus: "Pending CUs",
+        tpPct: "% TP",
+        btnStart: "Start clock",
+        activeJobsH: "Active:",
+        throttleBgDesc: "Capacity is collapsed. No new jobs are accepted.",
+        chartSub: "(at the most recent simulation timepoint, if you want to see historical data click on a timepoint in the visual and check the 'Timepoint Analysis' section)",
+        noSelection: "No selection",
+        chartHint: "Click for TP audit &nbsp;·&nbsp; <span class='text-slate-500'>+ / - = Zoom &nbsp;·&nbsp; Drag = Pan</span> &nbsp;·&nbsp; Click in table to highlight job",
+        timeAnalized: "Analyzed Moment",
+        activeResTable: "Active Reservations",
+        res1: "Reservation 1",
+        lastTp: "At last TP",
+        selTp: "At Selected TP",
+        billingEmpty: "Start simulation to see billing details",
+        hourClock: "Hour (sim. clock)",
+        cusCap: "Cap. CUs",
+        cusRes: "Res. CUs",
+        cusPayg: "PAYG CUs",
+        costRes: "Res. Cost",
+        costPayg: "PAYG Cost",
+        costTotal: "Total Cost",
+        resUnused: "Unused Res. (CUs)",
+        total: "TOTAL",
+        resEmpty: "No active reservations",
+        start: "Start",
+        nextMin: "Next {0} min",
+        nextHr: "Next {0} h",
+        hrOption: "HR",
+        view: "View",
+        resetView: "Live View",
+        throttleState: "Throttling State",
+        tpPrev: "Previous Timepoint",
+        tpPrevEmpty: "No data for previous timepoint",
+        tpPrevBtn: "Prev TP",
+        tpNext: "Next Timepoint",
+        tpNextEmpty: "No data for next timepoint",
+        tpNextBtn: "Next TP",
+        debtLiq: "Debt Liquidation",
+        auditEmpty: "Select a timepoint in the chart to analyze the debt bucket state.",
+        numberFormat: "Number Format:",
+        dateFormat: "Date Format:",
+        alerts: {
+            confirmFormatChange: "Changing the number or date format will reset the simulation. Do you want to continue?",
+            errorImport: "Error importing: ",
+            invalidVer: "Incompatible file.",
+            invalidVer1: "Incompatible file: This is a 1.0 (heavy) version file. Use minimalist export.",
+            invalidFile: "Error exporting: ",
+            surePause: "Are you sure you want to Pause capacity?",
+            pauseWarn: "Keep in mind all active jobs will terminate, and all remaining smoothed consumption will be added to the Azure bill.",
+            pauseWarn2: "However, upon resuming, capacity will be available with no accumulated debt or throttling.",
+            btnYesPause: "Yes, Pause",
+            btnNoPause: "No, let me think",
+            fillFields: "Please fill in all job fields.",
+            addSuccess: "Reservation added.",
+            selectValidTp: "You must select a valid Timepoint by clicking on the chart first.",
+            pauseErrFut: "You cannot pause at this Timepoint because there is already a future suspension (on {0}).",
+            throttleRej: "Rejection",
+            throttleDelay: "Delay",
+            throttleOk: "Healthy",
+            burnDown: "Burn-down",
+            accum: "Accumulating",
+            paused: "Paused",
+            bucketLiq: "Bucket liquidated (0 CUs)",
+            bucketEmpty: "Empty bucket",
+            eqMin: "Equivalent to {0} min. of consumption",
+            eqHr: "Equivalent to {0} hours of consumption",
+            marginEx: "+{0}% Excess",
+            marginExDesc: "You have consumed {0} CUs over the limit. This increases the debt bucket.",
+            marginSave: "{0}% Margin (Savings)",
+            marginSaveDesc1: "You have {0} CUs left over. The engine used them to burn-down accumulated debt.",
+            marginSaveDesc2: "You have {0} CUs left over. The system was healthy with no debt, so this excess is lost.",
+            marginLimit: "0% (At Limit)",
+            marginLimitDesc: "You have consumed exactly the purchased capacity. Debt remains unchanged.",
+            stateOverageThrot: "Overage · Throttling",
+            stateOverageAccum: "Overage · Accumulating",
+            stateBurnDown: "Burn-Down",
+            stateHealthy: "Healthy",
+            deltaAdd: "+{0} CUs added to bucket",
+            deltaPaid: "{0} CUs paid (Burn-Down)",
+            deltaNone: "Unchanged debt",
+            jobInt: "Interactive Job {0}",
+            jobBg: "Background Job {0}",
+            jobIntType: "Interactive",
+            jobBgType: "Background",
+            tpShort: "TP {0}"
+        }
+    }
+};
+
+let currentLang = 'en';
+
+function t(key) {
+    const keys = key.split('.');
+    let val = i18n[currentLang];
+    for (const k of keys) {
+        if (!val) return key;
+        val = val[k];
+    }
+    return val || key;
+}
+
+function tFormat(key, ...args) {
+    let str = t(key);
+    args.forEach((arg, i) => {
+        str = str.replace(`{${i}}`, arg);
+    });
+    return str;
+}
+
+function setLanguage(lang) {
+    if (typeof state !== 'undefined' && state && state.tpCursor > 0 && currentLang !== lang) {
+        if (!confirm(t('alerts.confirmFormatChange'))) {
+            const btn = document.getElementById('lang-btn');
+            if (btn) {
+                const icon = btn.querySelector('img');
+                const text = btn.querySelector('span:not(.material-symbols-outlined)');
+                if (currentLang === 'es') {
+                    if (icon) icon.src = "https://flagcdn.com/w40/es.png";
+                    if (text) text.textContent = "ES";
+                } else {
+                    if (icon) icon.src = "https://flagcdn.com/w40/gb.png";
+                    if (text) text.textContent = "EN";
+                }
+            }
+            return;
+        }
+    }
+    
+    const wasDifferentLang = currentLang !== lang;
+    currentLang = lang;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (el.tagName === 'INPUT' && el.type === 'button') {
+            el.value = t(key);
+        } else if (el.tagName === 'OPTION') {
+            el.textContent = t(key);
+        } else {
+            el.innerHTML = t(key);
+        }
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+    });
+    
+    // Toggle active state on language buttons
+    const esBtn = document.getElementById('lang-es');
+    const enBtn = document.getElementById('lang-en');
+    if (esBtn) esBtn.classList.toggle('opacity-50', lang !== 'es');
+    if (enBtn) enBtn.classList.toggle('opacity-50', lang !== 'en');
+
+    // Update formatting controls default
+    const numSel = document.getElementById('num-format-select');
+    const dateSel = document.getElementById('date-format-select');
+    let formatChanged = false;
+    if (numSel && numSel.value !== lang) {
+        numSel.value = lang;
+        numSel.setAttribute('data-prev', lang);
+        formatChanged = true;
+    }
+    if (dateSel && dateSel.value !== lang) {
+        dateSel.value = lang;
+        dateSel.setAttribute('data-prev', lang);
+        formatChanged = true;
+    }
+
+    if (wasDifferentLang && state && state.tpCursor > 0) {
+        reiniciarSimulacion();
+    } else if (formatChanged) {
+        updateFormats();
+    } else {
+        // Update dynamic UI components if initialized
+        if (typeof fabricChart !== 'undefined' && fabricChart) {
+            actualizarTresPaneles(forensicCursor >= 0 ? forensicCursor : Math.max(0, state.tpCursor - 1));
+            renderBillingTable();
+            renderTable();
+            if (typeof evaluarThrottling !== 'undefined') evaluarThrottling();
+            fabricChart.update('none');
+        }
+    }
+}
+
+function updateFormats() {
+    if (typeof startSim !== 'undefined' && startSim && typeof state !== 'undefined' && state && state.chartLabels) {
+        for (let i = 0; i < state.chartLabels.length; i++) {
+            const dt = new Date(startSim.getTime() + i * TP_SECONDS * 1000);
+            state.chartLabels[i] = formatChartXAxis(dt);
+        }
+        
+        if (typeof renderBillingTable !== 'undefined') renderBillingTable();
+        if (typeof renderReservationsTable !== 'undefined') renderReservationsTable();
+        if (typeof updateCostCards !== 'undefined') updateCostCards();
+        if (typeof actualizarTresPaneles !== 'undefined') actualizarTresPaneles(forensicCursor >= 0 ? forensicCursor : Math.max(0, state.tpCursor - 1));
+        if (typeof evaluarThrottling !== 'undefined') evaluarThrottling();
+        
+        if (typeof fabricChart !== 'undefined') fabricChart.update('none');
+
+        if (state.clock) {
+            document.getElementById('clock-display').textContent = formatFullDateTime(state.clock);
+        }
+    }
+}
+
+function handleFormatChange(selectElem) {
+    if (typeof state !== 'undefined' && state && state.tpCursor > 0) {
+        if (!confirm(t('alerts.confirmFormatChange'))) {
+            selectElem.value = selectElem.getAttribute('data-prev');
+            return;
+        }
+        reiniciarSimulacion();
+    }
+    selectElem.setAttribute('data-prev', selectElem.value);
+    updateFormats();
+}
+        let clock = new Date(2026, 0, 1, 8, 0, 0); 
+        let simInterval = null;
+        let fabricChart = null;
+        let bgJobCount = 0; 
+        let intJobCount = 0;   
+        let bgNameCount = 0;
+        let intNameCount = 0;
+        let forensicCursor = -1;
+        let reservationCounter = 1;
+        let lastBillingHourStr = null;
+        let tableState = { rows: [], sortField: null, sortDir: 'asc', currentPage: 1, pageSize: 50, highlightedJobId: null, currentTimeIndex: -1 };
+        
+        let state = {
+            isRunning: false, skuVal: 2, cuLimit: 60, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, speedTpsSec: 10, jobCounter: 1,
+            tpCursor: 0, isFollowing: true, isCapacityPaused: false,
+            reservations: [], billingRows: [], suspensions: [], pendingOveragesToBill: 0,
+            activeJobs: {}, chartLabels: Array(CHART_MAX_TPS).fill(""), historyData: Array(CHART_MAX_TPS).fill(null),
+            debtBucketCUs: 0, throttleLevel: 0, lastFuture10: 0, lastFuture60: 0, lastFuture24: 0
+        };
+
+        function parseLocalNumber(valStr) {
+            if (!valStr) return 0;
+            const str = valStr.toString();
+            const fmt = document.getElementById('num-format-select').value;
+            if (fmt === 'en') {
+                return parseFloat(str.replace(/,/g, '')) || 0;
+            } else {
+                return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+            }
+        }
+
+        function formatNum(num) {
+            if (num == null) return "0.00";
+            const f = parseFloat(num);
+            if (isNaN(f)) return "0.00";
+            const fmt = document.getElementById('num-format-select').value;
+            return new Intl.NumberFormat(fmt === 'en' ? 'en-US' : 'es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(f);
+        }
+
+        function getCurrency() {
+            const el = document.getElementById('currency-select');
+            return el ? (el.value === 'USD' ? '$' : '€') : '€';
+        }
+
+        function formatFullDateTime(date) {
+            const pad = (n) => n.toString().padStart(2, '0');
+            const fmt = document.getElementById('date-format-select').value;
+            if (fmt === 'en') {
+                return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+            } else {
+                return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+            }
+        }
+
+        function formatChartXAxis(date) {
+            const pad = (n) => n.toString().padStart(2, '0');
+            const fmt = document.getElementById('date-format-select').value;
+            if (fmt === 'en') {
+                return `${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+            } else {
+                return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+            }
+        }
+
+        function formatJustTime(date) {
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+        }
+
+        function getJobColor(type) {
+            if (type === 'Background') {
+                bgJobCount++; return `hsla(210, 80%, ${40 + ((bgJobCount * 8) % 40)}%, 0.8)`; 
+            } else {
+                intJobCount++; return `hsla(10, 80%, ${40 + ((intJobCount * 8) % 40)}%, 0.8)`; 
+            }
+        }
+
+        function updateActiveJobsCounter() {
+            document.getElementById('active-jobs-count').textContent = Object.keys(state.activeJobs).length;
+        }
+
+        function cambiarTipoTrabajo() {
+            const selectTipo = document.getElementById('job-type');
+            const selectSmooth = document.getElementById('job-smoothing');
+            const opt24h = selectSmooth.querySelector('option[value="1440"]');
+            if (selectTipo.value === 'Background') {
+                if (opt24h) opt24h.style.display = '';
+                selectSmooth.value = "1440"; selectSmooth.disabled = true;
+                document.getElementById('job-cus').value = "28800";
+            } else {
+                if (opt24h) opt24h.style.display = 'none';
+                selectSmooth.value = "5"; selectSmooth.disabled = false;
+                document.getElementById('job-cus').value = "100";
+            }
+            validarBotonesThrottling(); 
+        }
+
+        function cambiarSKU() {
+            state.skuVal = parseInt(document.getElementById('sku-select').value);
+            state.cuLimit = (state.skuVal / 2) * 60; 
+            if (fabricChart && fabricChart.data.datasets.length > 0) {
+                fabricChart.data.datasets[0].data = Array(CHART_MAX_TPS).fill(state.cuLimit);
+                if(!state.isRunning) fabricChart.update('none');
+            }
+            evaluarThrottling();
+        }
+
+        function cambiarVelocidad() {
+            state.speedTpsSec = parseInt(document.getElementById('speed-slider').value);
+            document.getElementById('speed-val').textContent = `${state.speedTpsSec} tp/s`;
+            // Intervals are now static at 100ms, simulationTick handles batch size dynamically
+        }
+
+        function togglePause() {
+            state.isRunning = !state.isRunning;
+            const btn = document.getElementById('btn-pause');
+            if (state.isRunning) {
+                btn.innerHTML = "⏸️ " + t('pauseClock'); btn.className = "flex-1 bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs py-2 rounded transition cursor-pointer";
+                state.tpAccumulator = 0;
+                state.lastTickTime = performance.now();
+                simInterval = setInterval(simulationTick, 100);
+            } else {
+                btn.innerHTML = "▶️ " + t('startClock'); btn.className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 rounded transition cursor-pointer";
+                clearInterval(simInterval);
+            }
+        }
+
+        function simulationTick() {
+            let now = performance.now();
+            let dt = (now - (state.lastTickTime || now)) / 1000;
+            state.lastTickTime = now;
+            
+            if (dt > 0.5) dt = 0.5; // limit massive jumps
+            
+            let targetSteps = state.speedTpsSec * dt;
+            state.tpAccumulator = (state.tpAccumulator || 0) + targetSteps;
+            
+            let steps = Math.floor(state.tpAccumulator);
+            state.tpAccumulator -= steps;
+            
+            let didAdvance = false;
+            for (let i = 0; i < steps; i++) {
+                if (!state.isRunning) break;
+                advanceTimepoint();
+                didAdvance = true;
+            }
+            if (didAdvance) {
+                fabricChart.update('none');
+                updateChartRangeLabel();
+                updateActiveJobsCounter();
+            }
+        }
+
+        function reiniciarSimulacion() {
+            state.isRunning = false; clearInterval(simInterval);
+            document.getElementById('btn-pause').innerHTML = "▶️ " + t('startClock'); 
+            document.getElementById('btn-pause').className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 rounded transition cursor-pointer";
+            
+            clock = new Date(2026, 0, 1, 8, 0, 0);
+            lastBillingHourStr = null;
+            state = { ...state, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, jobCounter: 1, activeJobs: {}, tpCursor: 0, isFollowing: true,
+                isCapacityPaused: false, reservations: [], billingRows: [], suspensions: [], pendingOveragesToBill: 0,
+                chartLabels: Array(CHART_MAX_TPS).fill(""), historyData: Array(CHART_MAX_TPS).fill(null),
+                debtBucketCUs: 0, throttleLevel: 0, lastFuture10: 0, lastFuture60: 0, lastFuture24: 0 };
+            bgJobCount = 0; intJobCount = 0; bgNameCount = 0; intNameCount = 0; forensicCursor = -1;
+            tableState = { rows: [], sortField: null, sortDir: 'asc', currentPage: 1, pageSize: 50, highlightedJobId: null, currentTimeIndex: -1 };
+            resetChartHighlight();
+            document.getElementById('table-empty').classList.remove('hidden');
+            document.getElementById('table-data').classList.add('hidden');
+            document.getElementById('table-pagination').classList.remove('flex');
+            document.getElementById('table-pagination').classList.add('hidden');
+            ['ap','ac','an'].forEach(p => {
+                document.getElementById(`${p}-empty`).classList.remove('hidden');
+                const d = document.getElementById(`${p}-data`); d.classList.add('hidden'); d.classList.remove('flex');
+            });
+            const DIS = "bg-slate-700/40 text-slate-600 text-[10px] px-2 py-1 rounded font-medium cursor-not-allowed";
+            document.getElementById('btn-tp-prev').disabled = true; document.getElementById('btn-tp-prev').className = DIS;
+            document.getElementById('btn-tp-next').disabled = true; document.getElementById('btn-tp-next').className = DIS;
+            
+            updateActiveJobsCounter();
+            updateCostCards();
+            document.getElementById('clock-display').textContent = formatFullDateTime(clock);
+            document.getElementById('tp-selected-label').textContent = t('noSelection');
+            renderReservationsTable();
+            renderBillingTable();
+            evaluarThrottling();
+
+            if (fabricChart) {
+                fabricChart.data.labels = state.chartLabels;
+                fabricChart.data.datasets = [fabricChart.data.datasets[0]];
+                fabricChart.data.datasets[0].data = Array(CHART_MAX_TPS).fill(state.cuLimit);
+                fabricChart.options.scales.x.min = 0;
+                fabricChart.options.scales.x.max = defaultChartWindow;
+                if (fabricChart.options.plugins.zoom && fabricChart.options.plugins.zoom.limits)
+                    fabricChart.options.plugins.zoom.limits.x.max = CHART_MAX_TPS;
+                fabricChart.resetZoom();
+                fabricChart.update();
+            }
+            document.getElementById('horizon-full-msg').classList.add('hidden');
+        }
+
+        function cambiarHorizonte() {
+            CHART_MAX_TPS = parseInt(document.getElementById('horizon-select').value);
+            defaultChartWindow = Math.min(120, CHART_MAX_TPS);
+            reiniciarSimulacion();
+        }
+
+        function resetarZoom() {
+            state.isFollowing = true;
+            if (fabricChart) {
+                fabricChart.options.scales.x.min = Math.max(0, state.tpCursor - defaultChartWindow);
+                fabricChart.options.scales.x.max = Math.max(defaultChartWindow, state.tpCursor);
+                if (fabricChart.options.plugins.zoom && fabricChart.options.plugins.zoom.limits)
+                    fabricChart.options.plugins.zoom.limits.x.max = Math.max(state.tpCursor, CHART_MAX_TPS);
+                fabricChart.resetZoom();
+                fabricChart.update('none');
+                updateChartRangeLabel();
+            }
+        }
+
+        function zoomMinChart() {
+            state.isFollowing = false;
+            if (fabricChart) {
+                fabricChart.options.scales.x.min = 0;
+                fabricChart.options.scales.x.max = Math.max(30, state.tpCursor + 1);
+                fabricChart.update('none');
+                updateChartRangeLabel();
+            }
+        }
+
+        function zoomMaxChart() {
+            state.isFollowing = false;
+            if (fabricChart) {
+                const center = state.tpCursor > 0 ? state.tpCursor : 0;
+                fabricChart.options.scales.x.min = Math.max(0, center - 10);
+                fabricChart.options.scales.x.max = fabricChart.options.scales.x.min + 30; // Zoom to 15 mins (30 TPs)
+                fabricChart.update('none');
+                updateChartRangeLabel();
+            }
+        }
+
+        function zoomSelChart() {
+            state.isFollowing = false;
+            if (fabricChart) {
+                if (forensicCursor === -1) {
+                    alert(t('alerts.selectValidTp') || "Por favor selecciona un Timepoint en la gráfica primero.");
+                    return;
+                }
+                const center = forensicCursor;
+                fabricChart.options.scales.x.min = Math.max(0, center - 10);
+                fabricChart.options.scales.x.max = fabricChart.options.scales.x.min + 30; // Zoom to 15 mins (30 TPs)
+                fabricChart.update('none');
+                updateChartRangeLabel();
+            }
+        }
+
+        function zoomInChart() {
+            state.isFollowing = false;
+            if(fabricChart) fabricChart.zoom(1.3);
+            updateChartRangeLabel();
+        }
+
+        function zoomOutChart() {
+            state.isFollowing = false;
+            if(fabricChart) fabricChart.zoom(0.77);
+            updateChartRangeLabel();
+        }
+
+        function panChart(direction) {
+            state.isFollowing = false;
+            if (!fabricChart) return;
+            const hours = parseInt(document.getElementById('pan-hours-select').value);
+            const tpsToPan = hours * 120; // 120 TPs per hour
+            
+            const currentMin = fabricChart.scales.x.min || 0;
+            const currentMax = fabricChart.scales.x.max || defaultChartWindow;
+            const windowSize = currentMax - currentMin;
+            
+            let newMin = currentMin + (tpsToPan * direction);
+            let newMax = currentMax + (tpsToPan * direction);
+            
+            if (newMin < 0) {
+                newMin = 0;
+                newMax = windowSize;
+            }
+            
+            fabricChart.options.scales.x.min = newMin;
+            fabricChart.options.scales.x.max = newMax;
+            fabricChart.update('none');
+            updateChartRangeLabel();
+        }
+
+        function updateChartRangeLabel() {
+            if(!fabricChart) return;
+            const min = Math.max(0, Math.floor(fabricChart.scales.x.min || 0));
+            const max = Math.min(CHART_MAX_TPS - 1, Math.ceil(fabricChart.scales.x.max || defaultChartWindow));
+            
+            const startSim = new Date(2026, 0, 1, 8, 0, 0);
+            const lblMin = state.chartLabels[min] || formatChartXAxis(new Date(startSim.getTime() + min * TP_SECONDS * 1000));
+            const lblMax = state.chartLabels[max] || formatChartXAxis(new Date(startSim.getTime() + max * TP_SECONDS * 1000));
+            
+            const visibleTPs = max - min;
+            document.getElementById('chart-range-label').textContent = `${t('view')}: ${lblMin} → ${lblMax} (${visibleTPs} TPs)`;
+        }
+
+        function agregarReserva() {
+            const nameInput = document.getElementById('res-name');
+            const name = nameInput.value.trim() || `Reserva ${reservationCounter++}`;
+            const cuPerSec = parseInt(document.getElementById('res-cu-per-sec').value) || 2;
+            state.reservations.push({
+                id: Date.now(),
+                name,
+                cuPerSec,
+                startEpoch: clock.getTime()
+            });
+            nameInput.value = '';
+            renderReservationsTable();
+            recalcularFacturacion();
+        }
+
+        function eliminarReserva(id) {
+            state.reservations = state.reservations.filter(r => r.id !== id);
+            renderReservationsTable();
+            recalcularFacturacion();
+        }
+
+        function renderReservationsTable() {
+            const tbody = document.getElementById('reservations-tbody');
+            tbody.innerHTML = '';
+            const empty = document.getElementById('reservations-empty');
+            const table = document.getElementById('reservations-table');
+            
+            if (state.reservations.length === 0) {
+                empty.classList.remove('hidden'); table.classList.add('hidden');
+            } else {
+                empty.classList.add('hidden'); table.classList.remove('hidden');
+                state.reservations.forEach(r => {
+                    const startStr = formatChartXAxis(new Date(r.startEpoch));
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-slate-700/50 hover:bg-slate-700/30";
+                    tr.innerHTML = `
+                        <td class="px-2 py-1.5 font-medium text-slate-300 whitespace-nowrap">${r.name}</td>
+                        <td class="px-2 py-1.5 text-right font-mono text-emerald-400">${r.cuPerSec}</td>
+                        <td class="px-2 py-1.5 text-slate-400 whitespace-nowrap">${startStr}</td>
+                        <td class="px-2 py-1.5 text-center">
+                            <button onclick="eliminarReserva(${r.id})" class="text-red-400 hover:text-red-300 font-bold px-1 rounded transition">✕</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }
+
+        function evaluarThrottling(tpMargin = null, isFastForwarding = false) {
+            const cap10 = state.cuLimit * 20;
+            const cap60 = state.cuLimit * 120;
+            const cap24 = state.cuLimit * 2880;
+            const BASE = "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border";
+
+            let future10 = 0, future60 = 0, future24 = 0;
+            Object.values(state.activeJobs).forEach(job => {
+                const rem = job.remainingTps;
+                future10 += Math.min(rem, 20)   * job.cusPerTp;
+                future60 += Math.min(rem, 120)  * job.cusPerTp;
+                future24 += Math.min(rem, 2880) * job.cusPerTp;
+            });
+            state.lastFuture10 = future10;
+            state.lastFuture60 = future60;
+            state.lastFuture24 = future24;
+
+            const isOver = tpMargin !== null && tpMargin < 0;
+            const trend = isOver ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'));
+
+
+            if (future24 > cap24) {
+                state.throttleLevel = 3;
+                if (!isFastForwarding) {
+                    const badge = document.getElementById('status-badge');
+                    badge.removeAttribute('data-i18n');
+                    badge.textContent = `Bg Rejection — ${trend}`;
+                    badge.className = `${BASE} bg-red-500/20 text-red-400 border-red-500/30`;
+                }
+            } else if (future60 > cap60) {
+                state.throttleLevel = 2;
+                if (!isFastForwarding) {
+                    const badge = document.getElementById('status-badge');
+                    badge.removeAttribute('data-i18n');
+                    badge.textContent = `Int Rejection — ${trend}`;
+                    badge.className = `${BASE} bg-orange-500/20 text-orange-400 border-orange-500/30`;
+                }
+            } else if (future10 > cap10) {
+                state.throttleLevel = 1;
+                if (!isFastForwarding) {
+                    const badge = document.getElementById('status-badge');
+                    badge.removeAttribute('data-i18n');
+                    badge.textContent = `Int Delay — ${trend}`;
+                    badge.className = `${BASE} bg-amber-500/20 text-amber-400 border-amber-500/30`;
+                }
+            } else {
+                state.throttleLevel = 0;
+                if (!isFastForwarding) {
+                    const badge = document.getElementById('status-badge');
+                    badge.removeAttribute('data-i18n');
+                    badge.textContent = `${t('alerts.throttleOk')}${state.debtBucketCUs > 0 ? ' — ' + trend : ''}`;
+                    badge.className = `${BASE} ${state.debtBucketCUs > 0 ? 'bg-sky-500/20 text-sky-400 border-sky-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`;
+                }
+            }
+
+            if (fabricChart && fabricChart.options.plugins.title) {
+                const badge = document.getElementById('status-badge');
+                if (badge) {
+                    const badgeText = state.throttleLevel === 0 ? t('alerts.stateHealthy') : badge.textContent;
+                    fabricChart.options.plugins.title.text = `System: ${badgeText} | Capacity: ${formatNum(state.cuLimit)} CUs | Speed: ${state.speedTpsSec} tp/s`;
+                }
+            }
+
+            if (!isFastForwarding) {
+                validarBotonesThrottling();
+            }
+        }
+
+        function validarBotonesThrottling() {
+            const btn = document.getElementById('btn-add-job');
+            const type = document.getElementById('job-type').value;
+            const overlay = document.getElementById('throttle-overlay');
+
+            if (state.isCapacityPaused) {
+                btn.disabled = true; btn.className = "w-full bg-amber-600 text-white font-bold py-1.5 rounded cursor-not-allowed";
+                btn.innerHTML = t('capPaused');
+                overlay.classList.add('hidden'); overlay.classList.remove('flex');
+            } else if (state.throttleLevel === 3) {
+                btn.disabled = true; btn.className = "w-full bg-slate-700 text-slate-500 font-bold py-1.5 rounded cursor-not-allowed";
+                btn.innerHTML = t('lockedFull');
+                overlay.classList.remove('hidden'); overlay.classList.add('flex');
+            } else if (state.throttleLevel === 2 && type === 'Interactive') {
+                btn.disabled = true; btn.className = "w-full bg-slate-700 text-slate-500 font-bold py-1.5 rounded cursor-not-allowed";
+                btn.innerHTML = t('lockedInt');
+                overlay.classList.add('hidden'); overlay.classList.remove('flex');
+            } else {
+                btn.disabled = false; btn.className = "w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-1.5 rounded transition shadow-lg cursor-pointer";
+                btn.innerHTML = "+ " + t('saveBtn');
+                overlay.classList.add('hidden'); overlay.classList.remove('flex');
+            }
+        }
+
+        function guardarTrabajo(eventOrSilent = false, overrideName = null, overrideType = null, overrideCus = null, overrideExp = null) {
+            const silent = eventOrSilent === true;
+            const totalCUs = overrideCus !== null ? overrideCus : parseLocalNumber(document.getElementById('job-cus').value);
+            if (totalCUs <= 0) return;
+
+            const nameInput = document.getElementById('job-name');
+            const type = overrideType || document.getElementById('job-type').value;
+            let autoName;
+            if (type === 'Background') { bgNameCount++; autoName = tFormat('alerts.jobBg', bgNameCount); }
+            else { intNameCount++; autoName = tFormat('alerts.jobInt', intNameCount); }
+            const name = overrideName || (nameInput.value.trim() || autoName);
+            const smoothingMins = type === 'Background' ? 1440 : 5;
+            const exp = overrideExp || document.getElementById('job-exp').value;
+            const durationTps = smoothingMins * 2; 
+            
+            const startStr = formatFullDateTime(clock);
+            let endDate = new Date(clock.getTime()); endDate.setMinutes(endDate.getMinutes() + smoothingMins);
+
+            const job = {
+                id: state.jobCounter++, name, exp, type,
+                totalCUs, cusPerTp: totalCUs / durationTps, remainingTps: durationTps, remainingCusToPay: totalCUs,
+                startStr, endStr: formatFullDateTime(endDate), color: getJobColor(type)
+            };
+
+            state.activeJobs[job.id] = job;
+            if (!silent) {
+                updateActiveJobsCounter();
+            }
+
+            const newDataset = {
+                jobId: job.id, jobName: job.name, jobExp: job.exp, jobType: job.type, jobTotalCUs: job.totalCUs, jobStartStr: job.startStr, jobEndStr: job.endStr, startTp: state.tpCursor,
+                label: job.name, data: Array(CHART_MAX_TPS).fill(0), remainingData: Array(CHART_MAX_TPS).fill(totalCUs),
+                backgroundColor: job.color, borderColor: job.color.replace('0.8', '1'), borderWidth: 1, fill: true,
+                pointRadius: function(ctx) { return (ctx.raw && ctx.raw > 0) ? 3 : 0; }, 
+                pointHoverRadius: function(ctx) { return (ctx.raw && ctx.raw > 0) ? 6 : 0; },
+                stack: 'jobs'
+            };
+
+            fabricChart.data.datasets.push(newDataset);
+            
+            const datasetsFromJobs = fabricChart.data.datasets.slice(1);
+            const bgDatasets = datasetsFromJobs.filter(ds => ds.jobType === 'Background').sort((a, b) => a.jobId - b.jobId);
+            const intDatasets = datasetsFromJobs.filter(ds => ds.jobType === 'Interactive').sort((a, b) => a.jobId - b.jobId);
+            fabricChart.data.datasets = [fabricChart.data.datasets[0], ...bgDatasets, ...intDatasets];
+
+            if (!silent) {
+                if (forensicCursor === -1 && (!state.isRunning || state.isCapacityPaused)) mostrarTablaTimepoint(-1);
+                
+                const btn = document.getElementById('btn-add-job');
+                btn.innerHTML = "✅ " + t('jobAdded'); btn.classList.replace('bg-sky-600', 'bg-emerald-600'); btn.classList.replace('hover:bg-sky-500', 'hover:bg-emerald-500');
+                setTimeout(() => {
+                    btn.innerHTML = "+ " + t('saveBtn');
+                    btn.classList.replace('bg-emerald-600', 'bg-sky-600'); btn.classList.replace('hover:bg-emerald-500', 'hover:bg-sky-500');
+                    cambiarTipoTrabajo(); // re-evaluamos en caso de throttle
+                }, 1500);
+            }
+
+            nameInput.value = ""; 
+            if(!state.isRunning) fabricChart.update('none');
+        }
+
+        function procesarFacturacionHora(currentClock, historyClock) {
+            const date = historyClock || currentClock;
+            const startHour = new Date(date);
+            startHour.setHours(startHour.getHours() - 1, 0, 0, 0);
+            
+            const slotStartEpoch = startHour.getTime();
+            const slotEndEpoch = date.getTime();
+            const dayStr = startHour.getDate().toString().padStart(2,'0') + '/' + (startHour.getMonth() + 1).toString().padStart(2,'0');
+            const slotHourStr = `${dayStr} ${startHour.getHours().toString().padStart(2,'0')}:00 - ${date.getHours().toString().padStart(2,'0')}:00`;
+
+            const pricePAYG = parseLocalNumber(document.getElementById('price-f2-payg').value) || 0.16;
+            const priceRes = parseLocalNumber(document.getElementById('price-f2-res').value) || 0.09;
+            const pricePerCu_PAYG = pricePAYG / 7200;
+            const pricePerCu_Res  = priceRes / 7200;
+
+            const cusCapPerHour = state.skuVal * 3600;
+
+            let capacityCUsActive = 0;
+            let liquidationCUs = 0;
+            let hourTPs = [];
+            
+            for (let i = state.tpCursor - 1; i >= 0; i--) {
+                const h = state.historyData[i];
+                if (!h) continue;
+                if (h.timeEpoch <= slotStartEpoch) break;
+                if (h.timeEpoch > slotEndEpoch) continue;
+                
+                let isSuspended = state.suspensions && state.suspensions.some(s => i >= s.startTp && i < s.endTp);
+                
+                let billedThisTp = 0;
+                if (!isSuspended) {
+                    capacityCUsActive += state.cuLimit;
+                    billedThisTp = state.cuLimit;
+                } else {
+                    liquidationCUs += h.totalCUs;
+                    billedThisTp = h.totalCUs;
+                }
+                
+                hourTPs.unshift({
+                    timeStr: h.timeStr,
+                    cus: billedThisTp,
+                    totalCUs: h.totalCUs,
+                    debt: h.debtCUs,
+                    isSuspended: isSuspended
+                });
+            }
+            
+            let cusToBill = capacityCUsActive + liquidationCUs;
+            if (cusToBill === 0 && !historyClock) cusToBill = cusCapPerHour;
+
+            let reservedCusSlot = 0;
+            let totalReservedAvailable = 0;
+            let activeResNames = [];
+
+            state.reservations.forEach(r => {
+                const resStartEpoch = r.startEpoch;
+                if (resStartEpoch < slotEndEpoch) {
+                    const startProrata = Math.max(slotStartEpoch, resStartEpoch);
+                    const secondsActive = (slotEndEpoch - startProrata) / 1000;
+                    if (secondsActive > 0) {
+                        const provided = r.cuPerSec * secondsActive;
+                        totalReservedAvailable += provided;
+                        const label = `${r.name} (${r.cuPerSec} CUs)`;
+                        if (!activeResNames.includes(label)) activeResNames.push(label);
+                    }
+                }
+            });
+
+            reservedCusSlot = Math.min(totalReservedAvailable, cusToBill);
+            const unusedResCus = Math.max(0, totalReservedAvailable - cusToBill);
+            const paygCusSlot = Math.max(0, cusToBill - reservedCusSlot);
+
+            const costRes_slot = reservedCusSlot * pricePerCu_Res;
+            const costPAYG_slot = paygCusSlot * pricePerCu_PAYG;
+            const costTotal_slot = costRes_slot + costPAYG_slot;
+
+            state.billingRows.push({
+                hourStr: slotHourStr,
+                cusCap: cusToBill,
+                cusRes: reservedCusSlot,
+                cusResUnused: unusedResCus,
+                cusPAYG: paygCusSlot,
+                eurRes: costRes_slot,
+                eurPAYG: costPAYG_slot,
+                eurTotal: costTotal_slot,
+                resNames: activeResNames.join(', '),
+                hourTPs: hourTPs
+            });
+
+            state.costReal += costTotal_slot;
+            state.costRealRes += costRes_slot;
+            state.costRealPAYG += costPAYG_slot;
+            state.costPAYG += cusToBill * pricePerCu_PAYG;
+            state.costRes += cusToBill * pricePerCu_Res;
+
+            updateCostCards();
+
+            if (!historyClock) renderBillingTable(true);
+        }
+
+        function togglePausarCapacidad(confirm = false) {
+            const btn = document.getElementById('btn-pause-capacity');
+            if (!state.isCapacityPaused && !confirm) {
+                document.getElementById('confirm-modal').classList.remove('hidden');
+                document.getElementById('confirm-modal').classList.add('flex');
+                return;
+            }
+            if (confirm) document.getElementById('confirm-modal').classList.add('hidden');
+
+            state.isCapacityPaused = !state.isCapacityPaused;
+            if (state.isCapacityPaused) {
+                btn.innerHTML = "▶️ " + t('resumeCap');
+                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow cursor-pointer uppercase tracking-wide animate-pulse";
+                ejecutarPausa(null, false);
+            } else {
+                btn.innerHTML = "⏸️ " + t('pauseCapShort');
+                btn.className = "bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-3 py-1.5 rounded transition shadow cursor-pointer uppercase tracking-wide";
+                
+                if (state.suspensions.length > 0) {
+                    state.suspensions[state.suspensions.length - 1].endTp = state.tpCursor;
+                }
+                
+                validarBotonesThrottling();
+                renderEventLog();
+                if(!state.isRunning) fabricChart.update('none');
+            }
+        }
+
+        function ejecutarPausa(overrideTp = null, isFastForwarding = false) {
+            const btn = document.getElementById('btn-pause-capacity');
+            let targetTp;
+            if (overrideTp !== null) {
+                targetTp = overrideTp;
+            } else {
+                const targetSelect = document.getElementById('pause-target').value;
+                targetTp = targetSelect === 'last' ? Math.max(0, state.tpCursor - 1) : state.tpCursor;
+                if (targetSelect === 'selected') {
+                    if (forensicCursor >= 0 && forensicCursor <= state.tpCursor) {
+                        targetTp = forensicCursor;
+                    } else {
+                        alert(t('alerts.selectValidTp'));
+                        return;
+                    }
+                }
+            }
+
+            const futureSuspension = state.suspensions.find(s => s.startTp > targetTp);
+            if (futureSuspension) {
+                if (!isFastForwarding) {
+                    const startSim = new Date(2026, 0, 1, 8, 0, 0);
+                    const sDate = new Date(startSim.getTime() + (futureSuspension.startTp + 1) * TP_SECONDS * 1000);
+                    alert(tFormat('alerts.pauseErrFut', formatFullDateTime(sDate)));
+                }
+                return;
+            }
+
+            let liquidationSum = 0;
+            for (let i = 1; i < fabricChart.data.datasets.length; i++) {
+                const ds = fabricChart.data.datasets[i];
+                let firstIdx = -1;
+                for (let j = 0; j <= targetTp; j++) {
+                    if (ds.data[j] > 0) { firstIdx = j; break; }
+                }
+                
+                if (firstIdx === -1 || firstIdx > targetTp) continue;
+                
+                let pendingSum = 0;
+                for (let j = targetTp + 1; j < CHART_MAX_TPS; j++) {
+                    pendingSum += ds.data[j] || 0;
+                    ds.data[j] = 0;
+                    if (ds.remainingData) {
+                        ds.remainingData[j] = 0;
+                    }
+                }
+                
+                if (state.activeJobs[ds.jobId]) {
+                    pendingSum += state.activeJobs[ds.jobId].remainingCusToPay || 0;
+                    delete state.activeJobs[ds.jobId];
+                }
+
+                if (pendingSum > 0) {
+                    ds.data[targetTp] = (ds.data[targetTp] || 0) + pendingSum;
+                    liquidationSum += pendingSum;
+                }
+                
+                if (ds.remainingData) {
+                    ds.remainingData[targetTp] = 0;
+                }
+            }
+            updateActiveJobsCounter();
+
+            const prevDebt = targetTp > 0 && state.historyData[targetTp - 1] ? state.historyData[targetTp - 1].debtCUs : state.debtBucketCUs;
+            if (prevDebt > 0) {
+                let debtDs = fabricChart.data.datasets.find(d => d.jobId === 'debt_liq');
+                if (!debtDs) {
+                    debtDs = {
+                        jobId: 'debt_liq', jobName: t('debtLiq'), jobType: 'Background', jobTotalCUs: prevDebt,
+                        label: t('debtLiq'), data: Array(CHART_MAX_TPS).fill(0), remainingData: Array(CHART_MAX_TPS).fill(0),
+                        backgroundColor: 'rgba(239, 68, 68, 0.8)', borderColor: 'rgb(239, 68, 68)', borderWidth: 1, fill: true,
+                        pointRadius: function(ctx) { return (ctx.raw && ctx.raw > 0) ? 3 : 0; }, 
+                        pointHoverRadius: function(ctx) { return (ctx.raw && ctx.raw > 0) ? 6 : 0; },
+                        stack: 'jobs'
+                    };
+                    fabricChart.data.datasets.push(debtDs);
+                }
+                debtDs.data[targetTp] = (debtDs.data[targetTp] || 0) + prevDebt;
+            }
+
+            state.debtBucketCUs = 0;
+            state.throttleLevel = 0;
+
+            state.isCapacityPaused = true;
+            state.suspensions.push({ startTp: targetTp, endTp: CHART_MAX_TPS });
+            renderEventLog();
+            
+            rebuildHistoryData(targetTp, isFastForwarding);
+        }
+
+        function rebuildHistoryData(fromTp, isFastForwarding = false) {
+            const startSim = new Date(2026, 0, 1, 8, 0, 0);
+            
+            for (let tpIdx = fromTp; tpIdx < state.tpCursor; tpIdx++) {
+                let totalSmoothedCUsThisTp = 0;
+                for (let i = 1; i < fabricChart.data.datasets.length; i++) {
+                    totalSmoothedCUsThisTp += fabricChart.data.datasets[i].data[tpIdx] || 0;
+                }
+                
+                let isSuspended = state.suspensions.some(s => tpIdx >= s.startTp && tpIdx < s.endTp);
+                let isStartOfSuspension = state.suspensions.some(s => s.startTp === tpIdx);
+                const prevDebtCUs = tpIdx === 0 ? 0 : (state.historyData[tpIdx-1] ? state.historyData[tpIdx-1].debtCUs : 0);
+
+                
+                let tpMargin = 0;
+                let newDebt = prevDebtCUs;
+                
+                if (isSuspended && !isStartOfSuspension) {
+                    newDebt = 0;
+                    tpMargin = 0;
+                } else if (isSuspended && isStartOfSuspension) {
+                    tpMargin = state.cuLimit - totalSmoothedCUsThisTp;
+                    newDebt = 0;
+                } else {
+                    tpMargin = state.cuLimit - totalSmoothedCUsThisTp;
+                    if (tpMargin < 0) {
+                        newDebt += Math.abs(tpMargin);
+                    } else {
+                        newDebt = Math.max(0, newDebt - tpMargin);
+                    }
+                }
+                
+                state.debtBucketCUs = newDebt;
+                if (!isSuspended) {
+                    evaluarThrottling(tpMargin, isFastForwarding);
+                } else {
+                    state.throttleLevel = 0;
+                    if (!isFastForwarding) {
+                        const badge = document.getElementById('status-badge');
+                        badge.removeAttribute('data-i18n');
+                        badge.textContent = t('alerts.paused');
+                        badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest bg-slate-500/20 text-slate-400 border border-slate-500/30';
+                    }
+                }
+                
+                let tempClock = new Date(startSim.getTime() + (tpIdx + 1) * TP_SECONDS * 1000);
+                const tpPercent = state.cuLimit > 0 ? (totalSmoothedCUsThisTp / state.cuLimit) * 100 : 0;
+                const marginPercent = state.cuLimit > 0 ? ((totalSmoothedCUsThisTp - state.cuLimit) / state.cuLimit) * 100 : 0;
+                const debtInMinutes = state.cuLimit > 0 ? state.debtBucketCUs / (state.cuLimit * 2) : 0;
+                
+                const _c10 = state.cuLimit * 20, _c60 = state.cuLimit * 120, _c24 = state.cuLimit * 2880;
+                
+                let p10 = _c10 > 0 ? totalSmoothedCUsThisTp / _c10 * 100 : 0;
+                let p60 = _c60 > 0 ? totalSmoothedCUsThisTp / _c60 * 100 : 0;
+                let p24 = _c24 > 0 ? totalSmoothedCUsThisTp / _c24 * 100 : 0;
+                let tpContribCUs = totalSmoothedCUsThisTp;
+                
+                if (isStartOfSuspension) {
+                    p10 = 0; p60 = 0; p24 = 0;
+                    tpContribCUs = 0;
+                }
+
+                state.historyData[tpIdx] = {
+                    timeStr: formatFullDateTime(tempClock), totalCUs: totalSmoothedCUsThisTp, percentCap: tpPercent,
+                    marginCUs: tpMargin, marginPercent: marginPercent, debtCUs: state.debtBucketCUs,
+                    debtMins: debtInMinutes, 
+                    stateName: isSuspended ? t('alerts.paused') : (!isFastForwarding ? document.getElementById('status-badge').textContent : (
+                        state.throttleLevel === 3 ? `Bg ${t('alerts.throttleRej')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                        state.throttleLevel === 2 ? `Int ${t('alerts.throttleRej')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                        state.throttleLevel === 1 ? `Int ${t('alerts.throttleDelay')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                        `${t('alerts.throttleOk')}${state.debtBucketCUs > 0 ? (tpMargin < 0 ? ' • ' + t('alerts.accum') : ' • ' + t('alerts.burnDown')) : ''}`
+                    )),
+                    prevDebtCUs: prevDebtCUs, throttleLevel: state.throttleLevel,
+                    timeEpoch: tempClock.getTime(),
+                    future10CUs: 0, future60CUs: 0, future24CUs: 0,
+                    future10Pct: 0, future60Pct: 0, future24Pct: 0,
+                    tpPct10: p10,
+                    tpPct60: p60,
+                    tpPct24: p24,
+                    tpContribCUs: tpContribCUs
+                };
+            }
+            
+            evaluarThrottling();
+            recalcularFacturacion();
+        }
+
+        function updateCostCards() {
+            const sym = getCurrency();
+            document.getElementById('cost-real').textContent = `${formatNum(state.costReal)} ${sym}`;
+            document.getElementById('cost-real-res').textContent = `${formatNum(state.costRealRes)} ${sym}`;
+            document.getElementById('cost-real-payg').textContent = `${formatNum(state.costRealPAYG)} ${sym}`;
+            
+            document.getElementById('cost-payg').textContent = `${formatNum(state.costPAYG)} ${sym}`;
+            document.getElementById('cost-reserved').textContent = `${formatNum(state.costRes)} ${sym}`;
+
+            const diffPayg = state.costPAYG - state.costReal;
+            const diffPaygPct = state.costReal > 0 ? (diffPayg / state.costReal * 100) : 0;
+            const dpEl = document.getElementById('diff-payg');
+            dpEl.textContent = `${diffPayg > 0 ? '+' : ''}${formatNum(diffPayg)} ${sym} (${diffPaygPct > 0 ? '+' : ''}${formatNum(diffPaygPct)}%)`;
+            dpEl.className = `text-[9px] font-mono absolute bottom-0 right-3 whitespace-nowrap ${diffPayg > 0 ? 'text-emerald-400' : (diffPayg < 0 ? 'text-red-400' : 'text-slate-500')}`;
+
+            const diffRes = state.costRes - state.costReal;
+            const diffResPct = state.costReal > 0 ? (diffRes / state.costReal * 100) : 0;
+            const drEl = document.getElementById('diff-res');
+            drEl.textContent = `${diffRes > 0 ? '+' : ''}${formatNum(diffRes)} ${sym} (${diffResPct > 0 ? '+' : ''}${formatNum(diffResPct)}%)`;
+            drEl.className = `text-[9px] font-mono absolute bottom-0 right-0 whitespace-nowrap ${diffRes > 0 ? 'text-emerald-400' : (diffRes < 0 ? 'text-red-400' : 'text-slate-500')}`;
+        }
+
+        function recalcularFacturacion() {
+            state.billingRows = [];
+            state.costReal = 0;
+            state.costPAYG = 0;
+            state.costRes = 0;
+            state.costRealRes = 0;
+            state.costRealPAYG = 0;
+            
+            const startSim = new Date(2026, 0, 1, 8, 0, 0);
+            let simClock = new Date(startSim);
+            const currentEpoch = clock.getTime();
+
+            while (simClock.getTime() < currentEpoch) {
+                simClock.setSeconds(simClock.getSeconds() + TP_SECONDS);
+                if (simClock.getMinutes() === 0 && simClock.getSeconds() === 0) {
+                    procesarFacturacionHora(null, simClock);
+                }
+            }
+            
+            updateCostCards();
+            renderBillingTable();
+        }
+
+        function renderBillingTable(appendOnly = false) {
+            const tbody = document.getElementById('billing-tbody');
+            if (!appendOnly) tbody.innerHTML = '';
+            
+            const empty = document.getElementById('billing-empty');
+            const table = document.getElementById('billing-table-container');
+
+            if (state.billingRows.length === 0) {
+                empty.classList.remove('hidden'); table.classList.add('hidden');
+                return;
+            }
+
+            empty.classList.add('hidden'); table.classList.remove('hidden');
+
+            let totCap = 0, totResCus = 0, totResUnused = 0, totPaygCus = 0, totResEur = 0, totPaygEur = 0, totEur = 0;
+            const sym = getCurrency();
+
+            state.billingRows.forEach(r => {
+                totCap += r.cusCap; totResCus += r.cusRes; totResUnused += r.cusResUnused; totPaygCus += r.cusPAYG;
+                totResEur += r.eurRes; totPaygEur += r.eurPAYG; totEur += r.eurTotal;
+            });
+
+            let startIdx = appendOnly ? Math.max(0, state.billingRows.length - 1) : 0;
+            const rowsToRender = appendOnly ? [state.billingRows[state.billingRows.length - 1]] : state.billingRows;
+            
+            let rowIdx = startIdx;
+            rowsToRender.forEach(r => {
+
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-700/50 hover:bg-slate-700/30 text-[10px]";
+                tr.innerHTML = `
+                    <td class="px-2 py-1.5 text-slate-300 font-mono whitespace-nowrap flex items-center gap-1">
+                        ${r.hourTPs && r.hourTPs.length > 0 ? `<button onclick="toggleBillingSubRow(${rowIdx}, this)" class="w-4 h-4 rounded text-sky-400 hover:bg-slate-600 transition flex items-center justify-center cursor-pointer font-bold select-none">+</button>` : `<span class="w-4 inline-block"></span>`}
+                        ${r.hourStr}
+                    </td>
+                    <td class="px-2 py-1.5 text-right font-mono text-slate-400">${formatNum(r.cusCap)}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-emerald-400">${formatNum(r.cusRes)}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-amber-400">${formatNum(r.cusPAYG)}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-emerald-400">${formatNum(r.eurRes)} ${sym}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-amber-400">${formatNum(r.eurPAYG)} ${sym}</td>
+                    <td class="px-2 py-1.5 text-right font-mono font-bold text-white">${formatNum(r.eurTotal)} ${sym}</td>
+                    <td class="px-2 py-1.5 text-slate-500 whitespace-nowrap">${r.resNames || '-'}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-sky-400">${formatNum(r.cusResUnused)}</td>
+                `;
+                tbody.appendChild(tr);
+
+                if (r.hourTPs && r.hourTPs.length > 0) {
+                    const subTr = document.createElement('tr');
+                    subTr.id = `billing-subrow-${rowIdx}`;
+                    subTr.className = "hidden bg-slate-900/50";
+                    
+                    let subHtml = `<td colspan="9" class="p-3"><div class="max-h-60 overflow-y-auto pr-2 rounded bg-slate-800/50 border border-slate-700/50 shadow-inner"><table class="w-full text-left border-collapse"><thead class="text-[9px] text-slate-400 uppercase tracking-widest sticky top-0 bg-slate-800 shadow-sm z-10 border-b border-slate-700"><tr><th class="px-3 py-1.5">Timepoint (30 s)</th><th class="px-3 py-1.5 text-right" data-i18n="capCus">${t('capCus')}</th><th class="px-3 py-1.5 text-right" data-i18n="consRealCus">${t('consRealCus')}</th><th class="px-3 py-1.5 text-right" data-i18n="debtResCus">${t('debtResCus')}</th><th class="px-3 py-1.5 text-center" data-i18n="status">${t('alerts.stateHealthy').split(' ')[0]}</th></tr></thead><tbody>`;
+                    
+                    r.hourTPs.forEach(tp => {
+                        subHtml += `<tr class="border-b border-slate-700/30 hover:bg-slate-700/50 text-[10px]"><td class="px-3 py-1 font-mono text-slate-400">${tp.timeStr}</td><td class="px-3 py-1 text-right font-mono ${tp.cus > state.cuLimit ? 'text-amber-400 font-bold' : 'text-slate-300'}">${formatNum(tp.cus)}</td><td class="px-3 py-1 text-right font-mono text-slate-400">${formatNum(tp.totalCUs)}</td><td class="px-3 py-1 text-right font-mono text-slate-400">${formatNum(tp.debt)}</td><td class="px-3 py-1 text-center">${tp.isSuspended ? '<span class="text-[8px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-500 uppercase font-bold tracking-wider">' + t('alerts.paused') + '</span>' : '<span class="text-[8px] text-slate-600">-</span>'}</td></tr>`;
+                    });
+                    
+                    subHtml += `</tbody></table></div></td>`;
+                    subTr.innerHTML = subHtml;
+                    tbody.appendChild(subTr);
+                }
+                rowIdx++;
+            });
+
+            document.getElementById('billing-total-cap').textContent = formatNum(totCap);
+            document.getElementById('billing-total-res-cus').textContent = formatNum(totResCus);
+            document.getElementById('billing-total-res-unused').textContent = formatNum(totResUnused);
+            document.getElementById('billing-total-payg-cus').textContent = formatNum(totPaygCus);
+            document.getElementById('billing-total-res-eur').textContent = `${formatNum(totResEur)} ${sym}`;
+            document.getElementById('billing-total-payg-eur').textContent = `${formatNum(totPaygEur)} ${sym}`;
+            document.getElementById('billing-total-eur').textContent = `${formatNum(totEur)} ${sym}`;
+        }
+
+        function toggleBillingSubRow(idx, btn) {
+            const subrow = document.getElementById(`billing-subrow-${idx}`);
+            if (subrow) {
+                if (subrow.classList.contains('hidden')) {
+                    subrow.classList.remove('hidden');
+                    btn.textContent = '−';
+                } else {
+                    subrow.classList.add('hidden');
+                    btn.textContent = '+';
+                }
+            }
+        }
+
+        function advanceTimepoint(isFastForwarding = false) {
+            const tpIdx = state.tpCursor;
+
+            if (tpIdx >= CHART_MAX_TPS) {
+                state.isRunning = false; clearInterval(simInterval);
+                document.getElementById('btn-pause').innerHTML = "▶️ " + t('startClock');
+                document.getElementById('btn-pause').className = "flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs py-2 rounded transition cursor-pointer";
+                document.getElementById('horizon-full-msg').classList.remove('hidden');
+                return;
+            }
+
+            clock.setSeconds(clock.getSeconds() + TP_SECONDS);
+            if (!isFastForwarding) {
+                document.getElementById('clock-display').textContent = formatFullDateTime(clock);
+            }
+
+            if (clock.getMinutes() === 0 && clock.getSeconds() === 0) {
+                procesarFacturacionHora(clock);
+            }
+
+            state.chartLabels[tpIdx] = formatChartXAxis(clock);
+            let totalSmoothedCUsThisTp = 0;
+
+            for (let i = fabricChart.data.datasets.length - 1; i >= 1; i--) {
+                const ds = fabricChart.data.datasets[i];
+                const job = state.activeJobs[ds.jobId];
+
+                let consumptionThisTp = 0;
+                let currentRemaining = 0;
+
+                if (job) {
+                    if (!state.isCapacityPaused && job.remainingTps > 0) {
+                        consumptionThisTp = job.cusPerTp;
+                        job.remainingTps--;
+                        job.remainingCusToPay -= consumptionThisTp;
+                        totalSmoothedCUsThisTp += consumptionThisTp;
+                    }
+                    currentRemaining = Math.max(0, job.remainingCusToPay);
+                    if (job.remainingTps === 0) {
+                        delete state.activeJobs[ds.jobId]; updateActiveJobsCounter();
+                    }
+                }
+
+                ds.data[tpIdx] = (ds.data[tpIdx] || 0) + consumptionThisTp;
+                if (ds.remainingData) ds.remainingData[tpIdx] = currentRemaining;
+            }
+
+            const prevDebtCUs = state.debtBucketCUs;
+            const prevThrottle = state.throttleLevel;
+            let tpMargin = 0;
+            
+            if (!state.isCapacityPaused) {
+                tpMargin = state.cuLimit - totalSmoothedCUsThisTp;
+                if (tpMargin < 0) {
+                    state.debtBucketCUs += Math.abs(tpMargin);
+                } else {
+                    state.debtBucketCUs = Math.max(0, state.debtBucketCUs - tpMargin);
+                }
+                evaluarThrottling(tpMargin, isFastForwarding);
+            } else {
+                state.throttleLevel = 0;
+                state.lastFuture10 = 0;
+                state.lastFuture60 = 0;
+                state.lastFuture24 = 0;
+                if (!isFastForwarding) {
+                    const badge = document.getElementById('status-badge');
+                    badge.removeAttribute('data-i18n');
+                    badge.textContent = t('alerts.paused');
+                    badge.className = 'px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest bg-slate-500/20 text-slate-400 border border-slate-500/30';
+                }
+            }
+
+            const tpPercent = state.cuLimit > 0 ? (totalSmoothedCUsThisTp / state.cuLimit) * 100 : 0;
+            const marginPercent = state.cuLimit > 0 ? ((totalSmoothedCUsThisTp - state.cuLimit) / state.cuLimit) * 100 : 0;
+            let debtInMinutes = state.cuLimit > 0 ? state.debtBucketCUs / (state.cuLimit * 2) : 0;
+
+            const _c10 = state.cuLimit * 20, _c60 = state.cuLimit * 120, _c24 = state.cuLimit * 2880;
+            let p10 = _c10 > 0 ? totalSmoothedCUsThisTp / _c10 * 100 : 0;
+            let p60 = _c60 > 0 ? totalSmoothedCUsThisTp / _c60 * 100 : 0;
+            let p24 = _c24 > 0 ? totalSmoothedCUsThisTp / _c24 * 100 : 0;
+            let tpContribCUs = totalSmoothedCUsThisTp;
+            
+            let isStartOfSuspension = state.suspensions.some(s => s.startTp === tpIdx);
+            if (isStartOfSuspension) {
+                p10 = 0; p60 = 0; p24 = 0;
+                tpContribCUs = 0;
+                state.debtBucketCUs = 0;
+                debtInMinutes = 0;
+            }
+
+            state.historyData[tpIdx] = {
+                timeStr: formatFullDateTime(clock), totalCUs: totalSmoothedCUsThisTp, percentCap: tpPercent,
+                marginCUs: tpMargin, marginPercent: marginPercent, debtCUs: state.debtBucketCUs,
+                debtMins: debtInMinutes, 
+                stateName: state.isCapacityPaused ? t('alerts.paused') : (!isFastForwarding ? document.getElementById('status-badge').textContent : (
+                    state.throttleLevel === 3 ? `Bg ${t('alerts.throttleRej')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                    state.throttleLevel === 2 ? `Int ${t('alerts.throttleRej')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                    state.throttleLevel === 1 ? `Int ${t('alerts.throttleDelay')} • ${tpMargin < 0 ? t('alerts.accum') : (state.debtBucketCUs > 0 ? t('alerts.burnDown') : t('alerts.throttleOk'))}` :
+                    `${t('alerts.throttleOk')}${state.debtBucketCUs > 0 ? (tpMargin < 0 ? ' • ' + t('alerts.accum') : ' • ' + t('alerts.burnDown')) : ''}`
+                )),
+                prevDebtCUs: prevDebtCUs, throttleLevel: state.throttleLevel,
+                timeEpoch:   clock.getTime(),
+                future10CUs: state.isCapacityPaused ? 0 : state.lastFuture10, 
+                future60CUs: state.isCapacityPaused ? 0 : state.lastFuture60, 
+                future24CUs: state.isCapacityPaused ? 0 : state.lastFuture24,
+                future10Pct: _c10 > 0 && !state.isCapacityPaused ? state.lastFuture10 / _c10 * 100 : 0,
+                future60Pct: _c60 > 0 && !state.isCapacityPaused ? state.lastFuture60 / _c60 * 100 : 0,
+                future24Pct: _c24 > 0 && !state.isCapacityPaused ? state.lastFuture24 / _c24 * 100 : 0,
+                tpPct10: p10,
+                tpPct60: p60,
+                tpPct24: p24,
+                tpContribCUs: tpContribCUs
+            };
+            state.tpCursor++;
+
+            if (prevThrottle !== state.throttleLevel && !isFastForwarding) {
+                renderEventLog();
+            }
+
+            // Actualizar límite de zoom al nuevo cursor
+            if (fabricChart.options.plugins.zoom && fabricChart.options.plugins.zoom.limits)
+                fabricChart.options.plugins.zoom.limits.x.max = state.tpCursor;
+
+            // Auto-follow: mantener el viewport en el último TP
+            if (state.isFollowing) {
+                const win = defaultChartWindow;
+                fabricChart.options.scales.x.min = Math.max(0, state.tpCursor - win);
+                fabricChart.options.scales.x.max = Math.max(win, state.tpCursor);
+            }
+        }
+
+        function renderAuditoriaPanel(prefix, data) {
+            const emptyEl = document.getElementById(`${prefix}-empty`);
+            const dataEl  = document.getElementById(`${prefix}-data`);
+            if (!data) { emptyEl.classList.remove('hidden'); dataEl.classList.add('hidden'); dataEl.classList.remove('flex'); return; }
+            emptyEl.classList.add('hidden'); dataEl.classList.remove('hidden'); dataEl.classList.add('flex');
+
+            document.getElementById(`${prefix}-time`).textContent = data.timeStr;
+            document.getElementById(`${prefix}-cus`).textContent = formatNum(data.totalCUs);
+
+            const capEl = document.getElementById(`${prefix}-cap`);
+            capEl.textContent = `${formatNum(data.percentCap)}%`;
+            capEl.className = data.percentCap > 100 ? "font-mono font-bold text-red-400" : "font-mono font-bold text-emerald-400";
+
+            const marginEl   = document.getElementById(`${prefix}-margin`);
+            const marginDesc = document.getElementById(`${prefix}-margin-desc`);
+            if (data.marginPercent > 0) {
+                marginEl.textContent = tFormat('alerts.marginEx', data.marginPercent.toFixed(1));
+                marginEl.className = "font-mono font-bold text-red-400";
+                marginDesc.textContent = tFormat('alerts.marginExDesc', Math.abs(data.marginCUs).toFixed(2));
+            } else if (data.marginPercent < 0) {
+                marginEl.textContent = tFormat('alerts.marginSave', Math.abs(data.marginPercent).toFixed(1));
+                marginEl.className = "font-mono font-bold text-emerald-400";
+                marginDesc.textContent = data.prevDebtCUs > 0
+                    ? tFormat('alerts.marginSaveDesc1', Math.abs(data.marginCUs).toFixed(2))
+                    : tFormat('alerts.marginSaveDesc2', Math.abs(data.marginCUs).toFixed(2));
+            } else {
+                marginEl.textContent = t('alerts.marginLimit');
+                marginEl.className = "font-mono font-bold text-slate-300";
+                marginDesc.textContent = t('alerts.marginLimitDesc');
+            }
+
+            document.getElementById(`${prefix}-debt-val`).textContent = `${formatNum(data.debtCUs)} CUs`;
+            let teq = data.debtMins === 0 ? t('alerts.bucketEmpty') : data.debtMins < 60 ? tFormat('alerts.eqMin', formatNum(data.debtMins)) : tFormat('alerts.eqHr', formatNum(data.debtMins/60));
+            document.getElementById(`${prefix}-debt-mins`).textContent = teq;
+
+            const stEl = document.getElementById(`${prefix}-status`);
+            stEl.textContent = data.stateName;
+            const dl = document.getElementById(`${prefix}-debt-line`);
+            if (data.stateName.includes('Rejection') || data.stateName.includes(t('alerts.throttleRej'))) { stEl.className = "font-bold text-red-400 uppercase tracking-wider text-xs";     dl.className = "absolute right-0 top-0 bottom-0 w-1 bg-red-500"; }
+            else if (data.stateName.includes('Delay') || data.stateName.includes(t('alerts.throttleDelay'))) { stEl.className = "font-bold text-amber-400 uppercase tracking-wider text-xs";   dl.className = "absolute right-0 top-0 bottom-0 w-1 bg-amber-500"; }
+            else { stEl.className = "font-bold text-green-400 uppercase tracking-wider text-xs";   dl.className = "absolute right-0 top-0 bottom-0 w-1 bg-green-500"; }
+
+            // Sección: Estado de la Capacidad
+            const capStateEl = document.getElementById(`${prefix}-capstate`);
+            if (capStateEl) {
+                const throttling = data.stateName && (data.stateName.includes('Delay') || data.stateName.includes('Rejection'));
+                const hasDebt = data.debtCUs > 0;
+                const pct = data.percentCap;
+                const delta = data.debtCUs - data.prevDebtCUs;
+                let capLabel, capColor, capBg, capBrd;
+                if (data.stateName === t('alerts.paused') || data.stateName === 'Pausado') {
+                    capLabel = t('alerts.paused'); capColor = 'text-slate-400'; capBg = 'bg-slate-800/40'; capBrd = 'border-slate-600/50';
+                } else if (pct >= 100 && throttling) {
+                    capLabel = t('alerts.stateOverageThrot'); capColor = 'text-red-400'; capBg = 'bg-red-900/20'; capBrd = 'border-red-700/50';
+                } else if (pct > 100 || (Math.abs(pct - 100) < 0.01 && hasDebt && !throttling)) {
+                    capLabel = t('alerts.stateOverageAccum'); capColor = 'text-orange-400'; capBg = 'bg-orange-900/20'; capBrd = 'border-orange-700/50';
+                } else if (pct < 100 && hasDebt) {
+                    capLabel = t('alerts.stateBurnDown'); capColor = 'text-sky-400'; capBg = 'bg-sky-900/20'; capBrd = 'border-sky-700/50';
+                } else {
+                    capLabel = t('alerts.stateHealthy'); capColor = 'text-green-400'; capBg = 'bg-green-900/20'; capBrd = 'border-green-700/50';
+                }
+                let deltaText, deltaColor;
+                if (data.stateName === t('alerts.paused') || data.stateName === 'Pausado') {
+                    deltaText = t('alerts.bucketLiq'); deltaColor = 'text-slate-400';
+                } else if (delta > 0.001) {
+                    deltaText = tFormat('alerts.deltaAdd', delta.toFixed(2)); deltaColor = 'text-red-400';
+                } else if (delta < -0.001) {
+                    deltaText = tFormat('alerts.deltaPaid', Math.abs(delta).toFixed(2)); deltaColor = 'text-sky-400';
+                } else {
+                    deltaText = t('alerts.deltaNone'); deltaColor = 'text-slate-400';
+                }
+                const isCtr = (prefix === 'ac');
+                capStateEl.className = `${capBg} ${isCtr ? 'p-3 rounded-lg' : 'p-2 rounded'} border ${capBrd} text-center`;
+                const badge = document.getElementById(`${prefix}-capstate-badge`);
+                const deltaEl = document.getElementById(`${prefix}-capstate-delta`);
+                if (badge) { badge.textContent = capLabel; badge.className = `font-bold ${isCtr ? 'text-sm' : 'text-xs'} uppercase tracking-wide ${capColor}`; }
+                if (deltaEl) { deltaEl.textContent = deltaText; deltaEl.className = `${isCtr ? 'text-xs' : 'text-[10px]'} ${deltaColor} mt-0.5`; }
+            }
+
+            // Sección: Contribución de este TP a cada ventana
+            const tpContribEl = document.getElementById(`${prefix}-tp-contrib`);
+            if (tpContribEl) {
+                const isCtr = (prefix === 'ac');
+                const cellCls = isCtr ? 'bg-slate-800 p-2 rounded border border-slate-700 text-center' : 'bg-slate-900/40 p-1.5 rounded border border-slate-700/40 text-center';
+                const cusCls  = isCtr ? 'font-mono font-bold text-white text-[10px]' : 'font-mono font-bold text-white text-[9px]';
+                const pClr    = (p) => p > 100 ? 'text-red-400' : p > 75 ? 'text-amber-400' : 'text-green-400';
+                const cv10 = state.cuLimit * 20, cv60 = state.cuLimit * 120, cv24 = state.cuLimit * 2880;
+                const tpC = data.tpContribCUs != null ? data.tpContribCUs : data.totalCUs;
+                const p10 = data.tpPct10 != null ? data.tpPct10 : (tpC / cv10 * 100);
+                const p60 = data.tpPct60 != null ? data.tpPct60 : (tpC / cv60 * 100);
+                const p24 = data.tpPct24 != null ? data.tpPct24 : (tpC / cv24 * 100);
+                const cell = (lbl, pct) => `<div class="${cellCls}"><div class="text-[10px] text-slate-300 mb-0.5">${lbl}</div><div class="${cusCls}">${tpC.toFixed(2)} CUs</div><div class="font-mono font-bold text-[9px] ${pClr(pct)}">${pct.toFixed(3)}%</div></div>`;
+                tpContribEl.innerHTML = cell('10 min', p10) + cell('60 min', p60) + cell('24 h', p24);
+            }
+
+            // Sección: Comprometido en ventanas futuras
+            const futEl = document.getElementById(`${prefix}-fut-windows`);
+            if (futEl) {
+                const isCtr  = (prefix === 'ac');
+                const rowCls = isCtr ? 'bg-slate-800 p-2 rounded border border-slate-700' : 'bg-slate-900/40 p-1.5 rounded border border-slate-700/40';
+                const pClr   = (p) => p > 100 ? 'text-red-400' : p > 75 ? 'text-amber-400' : 'text-green-400';
+                const epoch  = data.timeEpoch || null;
+                const fmt    = epoch ? (ms) => { const d = new Date(ms); const z = n => n.toString().padStart(2,'0'); return `${z(d.getDate())}/${z(d.getMonth()+1)} ${z(d.getHours())}:${z(d.getMinutes())}:${z(d.getSeconds())}`; } : () => '--';
+                const cv10 = state.cuLimit * 20, cv60 = state.cuLimit * 120, cv24 = state.cuLimit * 2880;
+                const f10 = data.future10CUs ?? 0, f60 = data.future60CUs ?? 0, f24 = data.future24CUs ?? 0;
+                const fp10 = data.future10Pct ?? (f10 / cv10 * 100);
+                const fp60 = data.future60Pct ?? (f60 / cv60 * 100);
+                const fp24 = data.future24Pct ?? (f24 / cv24 * 100);
+                const mkRow = (lbl, fCUs, pct, endMs) =>
+                    `<div class="${rowCls}"><div class="flex justify-between items-center mb-0.5"><span class="text-[10px] font-semibold text-slate-200 uppercase tracking-wider">${lbl}</span><span class="font-mono font-bold text-[10px] ${pClr(pct)}">${fCUs.toFixed(2)} CUs · ${pct.toFixed(1)}%</span></div><div class="flex justify-between"><span class="text-[10px] text-slate-400">${t('start')}: ${fmt(epoch)}</span><span class="text-[10px] text-slate-400">Fin: ${fmt(endMs)}</span></div></div>`;
+                futEl.innerHTML =
+                    mkRow(tFormat('nextMin', 10), f10, fp10, epoch + 600000) +
+                    mkRow(tFormat('nextMin', 60), f60, fp60, epoch + 3600000) +
+                    mkRow(tFormat('nextHr', 24),   f24, fp24, epoch + 86400000);
+            }
+        }
+
+        function actualizarTresPaneles(centerIdx) {
+            forensicCursor = centerIdx;
+            
+            const h = state.historyData[centerIdx];
+            if (h) {
+                const label = document.getElementById('tp-selected-label');
+                label.removeAttribute('data-i18n');
+                label.textContent = `TP: ${h.timeStr}`;
+                const btnClr = document.getElementById('btn-clear-tp');
+                if (btnClr) btnClr.classList.remove('hidden');
+                const btnPrevSel = document.getElementById('btn-prev-tp-sel');
+                if (btnPrevSel) btnPrevSel.classList.remove('hidden');
+                const btnNextSel = document.getElementById('btn-next-tp-sel');
+                if (btnNextSel) btnNextSel.classList.remove('hidden');
+            }
+
+            renderAuditoriaPanel('ac', h || null);
+
+            let prevIdx = centerIdx - 1;
+            while (prevIdx >= 0 && state.historyData[prevIdx] === null) prevIdx--;
+            renderAuditoriaPanel('ap', prevIdx >= 0 ? state.historyData[prevIdx] : null);
+
+            let nextIdx = centerIdx + 1;
+            while (nextIdx < CHART_MAX_TPS && state.historyData[nextIdx] === null) nextIdx++;
+            const nextData = nextIdx < CHART_MAX_TPS ? state.historyData[nextIdx] : null;
+            renderAuditoriaPanel('an', nextData);
+
+            const EN  = "bg-slate-700 hover:bg-slate-600 text-white text-[10px] px-2 py-1 rounded transition cursor-pointer font-medium";
+            const DIS = "bg-slate-700/40 text-slate-600 text-[10px] px-2 py-1 rounded font-medium cursor-not-allowed";
+            const btnP = document.getElementById('btn-tp-prev');
+            const btnN = document.getElementById('btn-tp-next');
+            btnP.disabled = prevIdx < 0;     btnP.className = prevIdx < 0    ? DIS : EN;
+            btnN.disabled = !nextData;       btnN.className = !nextData      ? DIS : EN;
+        }
+
+        function mostrarAuditoria(dataIndex) {
+            if (!state.historyData[dataIndex]) return;
+            actualizarTresPaneles(dataIndex);
+            const pauseTarget = document.getElementById('pause-target');
+            if (pauseTarget) pauseTarget.value = 'selected';
+        }
+
+        function moverSeleccionTp(dir) {
+            if (forensicCursor === -1) return;
+            const newCursor = forensicCursor + dir;
+            if (newCursor >= 0 && newCursor < state.tpCursor) {
+                mostrarAuditoria(newCursor);
+                resetChartHighlight();
+                mostrarTablaTimepoint(newCursor);
+                if (fabricChart) fabricChart.update('none');
+            }
+        }
+
+        function quitarSeleccionTp() {
+            forensicCursor = -1;
+            const label = document.getElementById('tp-selected-label');
+            label.setAttribute('data-i18n', 'noSelection');
+            label.textContent = t('noSelection');
+            const btnClr = document.getElementById('btn-clear-tp');
+            if (btnClr) btnClr.classList.add('hidden');
+            const btnPrevSel = document.getElementById('btn-prev-tp-sel');
+            if (btnPrevSel) btnPrevSel.classList.add('hidden');
+            const btnNextSel = document.getElementById('btn-next-tp-sel');
+            if (btnNextSel) btnNextSel.classList.add('hidden');
+            
+            const pauseTarget = document.getElementById('pause-target');
+            if (pauseTarget) pauseTarget.value = 'last';
+            
+            resetChartHighlight();
+            mostrarTablaTimepoint(-1);
+            
+            renderAuditoriaPanel('ac', null);
+            renderAuditoriaPanel('ap', null);
+            renderAuditoriaPanel('an', null);
+
+            const DIS = "bg-slate-700/40 text-slate-600 text-[10px] px-2 py-1 rounded font-medium cursor-not-allowed";
+            const btnP = document.getElementById('btn-tp-prev');
+            const btnN = document.getElementById('btn-tp-next');
+            if (btnP) { btnP.disabled = true; btnP.className = DIS; }
+            if (btnN) { btnN.disabled = true; btnN.className = DIS; }
+        }
+
+        function navTimepoint(dir) {
+            let last = -1;
+            for (let i = CHART_MAX_TPS - 1; i >= 0; i--) {
+                if (state.historyData[i] !== null) { last = i; break; }
+            }
+            if (last === -1) return;
+            if (forensicCursor === -1 || forensicCursor > last) forensicCursor = last;
+
+            if (dir === 1) {
+                if (forensicCursor >= last) {
+                    // En el último punto: avanzar la simulación 1 TP
+                    advanceTimepoint();
+                    for (let i = CHART_MAX_TPS - 1; i >= 0; i--) {
+                        if (state.historyData[i] !== null) { forensicCursor = i; break; }
+                    }
+                } else {
+                    forensicCursor = Math.min(forensicCursor + 1, last);
+                }
+            } else {
+                let prev = forensicCursor - 1;
+                while (prev >= 0 && state.historyData[prev] === null) prev--;
+                if (prev < 0) return;
+                forensicCursor = prev;
+            }
+            if (state.historyData[forensicCursor]) {
+                mostrarAuditoria(forensicCursor);
+                resetChartHighlight();
+                mostrarTablaTimepoint(forensicCursor);
+            }
+        }
+
+        function mostrarTablaTimepoint(dataIndex) {
+            tableState.currentTimeIndex = dataIndex;
+            tableState.currentPage = 1;
+            tableState.highlightedJobId = null;
+            const rows = [];
+            
+            if (dataIndex === -1 && (!state.isRunning || state.isCapacityPaused)) {
+                fabricChart.data.datasets.forEach((ds, dsIdx) => {
+                    if (!ds.jobId) return;
+                    const job = state.activeJobs[ds.jobId];
+                    if (!job) return;
+                    const remaining = job.remainingCusToPay;
+                    const paid = job.totalCUs - remaining;
+                    rows.push({ datasetIndex: dsIdx, jobId: ds.jobId, exp: ds.jobExp || '-', name: ds.jobName || '-', type: ds.jobType || '-', totalCUs: ds.jobTotalCUs || 0, tpCUs: job.cusPerTp, begin: ds.jobStartStr || '-', end: ds.jobEndStr || '-', paid: paid, pending: remaining });
+                });
+            } else if (dataIndex !== -1) {
+                fabricChart.data.datasets.forEach((ds, dsIdx) => {
+                    if (!ds.jobId) return;
+                    const tpCUs = ds.data[dataIndex] || 0;
+                    if (tpCUs === 0) return;
+                    const remaining = ds.remainingData ? (ds.remainingData[dataIndex] || 0) : 0;
+                    rows.push({ datasetIndex: dsIdx, jobId: ds.jobId, exp: ds.jobExp || '-', name: ds.jobName || '-', type: ds.jobType || '-', totalCUs: ds.jobTotalCUs || 0, tpCUs, begin: ds.jobStartStr || '-', end: ds.jobEndStr || '-', paid: (ds.jobTotalCUs || 0) - remaining, pending: remaining });
+                });
+            }
+            
+            tableState.rows = rows;
+            renderTable();
+        }
+
+        function buildEventLog() {
+            state.events = [];
+            
+            let currentThrottle = 0; 
+            for (let i = 0; i <= state.tpCursor; i++) {
+                if (!state.historyData[i]) continue;
+                
+                const tpData = state.historyData[i];
+                const tl = tpData.throttleLevel || 0;
+                
+                if (tl !== currentThrottle) {
+                    let eventName = "";
+                    let color = "text-emerald-400";
+                    
+                    if (tl === 0) { eventName = "Healthy"; }
+                    else if (tl === 1) { eventName = "Interactive Delay"; color = "text-amber-400"; }
+                    else if (tl === 2) { eventName = "Interactive Rejection"; color = "text-orange-400"; }
+                    else if (tl === 3) { eventName = "Background Rejection"; color = "text-red-400"; }
+                    
+                    state.events.push({ tpIdx: i, name: eventName, color });
+                    currentThrottle = tl;
+                }
+            }
+            
+            state.suspensions.forEach(s => {
+                state.events.push({ tpIdx: s.startTp, name: t('eventPauseCap') || "Capacidad Pausada", color: "text-amber-400 font-bold" });
+                if (s.endTp < CHART_MAX_TPS) {
+                    state.events.push({ tpIdx: s.endTp, name: t('eventResumeCap') || "Capacidad Reanudada", color: "text-emerald-400 font-bold" });
+                }
+            });
+            
+            state.events.sort((a, b) => a.tpIdx - b.tpIdx);
+        }
+
+        function renderEventLog() {
+            buildEventLog();
+            
+            const cont = document.getElementById('event-log-container');
+            const empty = document.getElementById('event-log-empty');
+            
+            if (state.events.length === 0) {
+                cont.classList.add('hidden');
+                empty.classList.remove('hidden');
+                return;
+            }
+            
+            cont.classList.remove('hidden');
+            empty.classList.add('hidden');
+            
+            const tbody = document.getElementById('event-log-body');
+            tbody.innerHTML = '';
+            
+            [...state.events].reverse().forEach(ev => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-700/50 hover:bg-slate-700/30 transition";
+                
+                const tdTp = document.createElement('td');
+                tdTp.className = "px-2 py-1.5 font-mono text-slate-400";
+                
+                let timeStr = state.historyData[ev.tpIdx] ? state.historyData[ev.tpIdx].timeStr : state.chartLabels[ev.tpIdx];
+                if (!timeStr) {
+                    const startSim = new Date(2026, 0, 1, 8, 0, 0);
+                    const tempClock = new Date(startSim.getTime() + ev.tpIdx * TP_SECONDS * 1000);
+                    timeStr = formatFullDateTime(tempClock);
+                }
+                
+                tdTp.textContent = timeStr;
+                
+                const tdName = document.createElement('td');
+                tdName.className = `px-2 py-1.5 ${ev.color}`;
+                tdName.textContent = ev.name;
+                
+                tr.appendChild(tdTp);
+                tr.appendChild(tdName);
+                tbody.appendChild(tr);
+            });
+        }
+
+        function sortTable(field) {
+            tableState.sortDir = (tableState.sortField === field) ? (tableState.sortDir === 'asc' ? 'desc' : 'asc') : 'asc';
+            tableState.sortField = field;
+            tableState.currentPage = 1;
+            renderTable();
+        }
+
+        function renderTable() {
+            const sorted = [...tableState.rows];
+            if (tableState.sortField) {
+                const d = tableState.sortDir === 'asc' ? 1 : -1;
+                sorted.sort((a, b) => { const av = a[tableState.sortField], bv = b[tableState.sortField]; return typeof av === 'number' ? (av - bv) * d : String(av).localeCompare(String(bv)) * d; });
+            }
+            const total = sorted.length;
+            const totalPages = Math.max(1, Math.ceil(total / tableState.pageSize));
+            tableState.currentPage = Math.min(tableState.currentPage, totalPages);
+            const start = (tableState.currentPage - 1) * tableState.pageSize;
+            const pageRows = sorted.slice(start, start + tableState.pageSize);
+
+            document.getElementById('table-empty').classList.toggle('hidden', total > 0);
+            document.getElementById('table-data').classList.toggle('hidden', total === 0);
+            const pag = document.getElementById('table-pagination');
+            if (total > 0) { pag.classList.remove('hidden'); pag.classList.add('flex'); }
+            else { pag.classList.add('hidden'); pag.classList.remove('flex'); return; }
+
+            document.getElementById('table-info').textContent = `${total} trabajo${total !== 1 ? 's' : ''}`;
+            document.getElementById('table-page-info').textContent = `Pág ${tableState.currentPage}/${totalPages}`;
+            document.getElementById('btn-table-prev').disabled = tableState.currentPage <= 1;
+            document.getElementById('btn-table-next').disabled = tableState.currentPage >= totalPages;
+
+            ['exp','name','type','totalCUs','tpCUs','begin','end','paid','pending'].forEach(f => {
+                const el = document.getElementById(`sort-${f}`);
+                if (el) el.textContent = tableState.sortField === f ? (tableState.sortDir === 'asc' ? '↑' : '↓') : '↕';
+            });
+
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            pageRows.forEach(row => {
+                const tr = document.createElement('tr');
+                const isHL = row.jobId === tableState.highlightedJobId;
+                const tc = row.type === 'Interactive' ? 'text-red-400' : 'text-blue-400';
+                tr.className = isHL ? 'bg-sky-900/50 cursor-pointer' : 'border-b border-slate-700/40 hover:bg-slate-700/30 cursor-pointer';
+                tr.onclick = () => selectTableRow(row.jobId, row.datasetIndex);
+                tr.innerHTML = `<td class="px-3 py-1.5 text-slate-300 whitespace-nowrap">${row.exp}</td><td class="px-3 py-1.5 text-white font-medium whitespace-nowrap">${row.name}</td><td class="px-3 py-1.5 ${tc} font-medium whitespace-nowrap">${row.type}</td><td class="px-3 py-1.5 text-right font-mono text-slate-200 whitespace-nowrap">${row.totalCUs.toFixed(2)}</td><td class="px-3 py-1.5 text-right font-mono text-sky-300 whitespace-nowrap">${row.tpCUs.toFixed(2)}</td><td class="px-3 py-1.5 text-slate-400 text-[10px] whitespace-nowrap">${row.begin}</td><td class="px-3 py-1.5 text-slate-400 text-[10px] whitespace-nowrap">${row.end}</td><td class="px-3 py-1.5 text-right font-mono text-emerald-400 whitespace-nowrap">${row.paid.toFixed(2)}</td><td class="px-3 py-1.5 text-right font-mono text-amber-400 whitespace-nowrap">${row.pending.toFixed(2)}</td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function tablePrevPage() {
+            if (tableState.currentPage > 1) { tableState.currentPage--; renderTable(); }
+        }
+        function tableNextPage() {
+            if (tableState.currentPage < Math.ceil(tableState.rows.length / tableState.pageSize)) { tableState.currentPage++; renderTable(); }
+        }
+
+        function selectTableRow(jobId, datasetIndex) {
+            if (tableState.highlightedJobId === jobId) { tableState.highlightedJobId = null; resetChartHighlight(); }
+            else { tableState.highlightedJobId = jobId; highlightDatasetInChart(datasetIndex); }
+            renderTable();
+        }
+
+        function highlightDatasetInChart(hlDsIdx) {
+            fabricChart.data.datasets.forEach((ds, i) => {
+                if (i === 0) return;
+                if (!ds._origBg) ds._origBg = ds.backgroundColor;
+                if (!ds._origBorder) ds._origBorder = ds.borderColor;
+                if (i === hlDsIdx) {
+                    ds.backgroundColor = ds._origBg; ds.borderColor = ds._origBorder; ds.borderWidth = 2;
+                } else {
+                    ds.backgroundColor = ds._origBg.replace(/,\s*[\d.]+\)$/, ', 0.07)');
+                    ds.borderColor = ds._origBorder.replace(/,\s*[\d.]+\)$/, ', 0.12)');
+                    ds.borderWidth = 0.5;
+                }
+            });
+            fabricChart.update('none');
+        }
+
+        function resetChartHighlight() {
+            let changed = false;
+            fabricChart.data.datasets.forEach((ds, i) => {
+                if (i === 0 || !ds._origBg) return;
+                ds.backgroundColor = ds._origBg; ds._origBg = null;
+                ds.borderColor = ds._origBorder; ds._origBorder = null;
+                ds.borderWidth = 1; changed = true;
+            });
+            if (changed) fabricChart.update('none');
+        }
+
+        function inicializarSimulador() {
+            setLanguage(currentLang);
+            const selectSmooth = document.getElementById('job-smoothing');
+            selectSmooth.innerHTML = '';
+            selectSmooth.appendChild(new Option(`24 HR (2880 tps)`, "1440"));
+            selectSmooth.appendChild(new Option("5 min (10 tps)", "5"));
+            for(let m = 5; m <= 60; m += 5) { selectSmooth.appendChild(new Option(`${m} min (${m * 2} tps)`, m.toString())); }
+            selectSmooth.appendChild(new Option("64 min (128 tps)", "64"));
+            cambiarTipoTrabajo();
+
+            const ctx = document.getElementById('fabricChart').getContext('2d');
+            fabricChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: state.chartLabels,
+                    datasets: [{ label: 'Límite SKU', data: Array(CHART_MAX_TPS).fill(state.cuLimit), borderColor: '#ef4444', borderWidth: 2, borderDash: [5, 5], pointRadius: 0, fill: false, stepped: true, stack: 'limitAxis' }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    onClick: (e, activeEls) => {
+                        if (activeEls.length > 0) {
+                            const dataIndex = activeEls[0].index;
+                            mostrarAuditoria(dataIndex);
+                            resetChartHighlight();
+                            mostrarTablaTimepoint(dataIndex);
+                        }
+                    },
+                    scales: {
+                        x: { min: 0, max: defaultChartWindow, grid: { color: '#334155' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
+                        y: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' }, min: 0 }
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            enabled: true,
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(10,14,26,0.97)',
+                            titleColor: '#94a3b8',
+                            bodyColor: '#e2e8f0',
+                            borderColor: 'rgba(71,85,105,0.5)',
+                            borderWidth: 1,
+                            padding: 12,
+                            titleFont: { size: 12, weight: 'bold', family: 'monospace' },
+                            bodyFont: { size: 11, family: 'monospace' },
+                            displayColors: false,
+                            callbacks: {
+                                title: (items) => {
+                                    if (!items.length) return '';
+                                    const idx = items[0].dataIndex;
+                                    const h = state.historyData[idx];
+                                    return h ? h.timeStr : (state.chartLabels[idx] || '');
+                                },
+                                label: () => null,
+                                afterBody: (items) => {
+                                    if (!items.length) return [];
+                                    const idx = items[0].dataIndex;
+                                    let bgCount = 0, bgCUs = 0, intCount = 0, intCUs = 0;
+                                    fabricChart.data.datasets.slice(1).forEach(ds => {
+                                        const val = ds.data[idx] || 0;
+                                        if (val > 0) {
+                                            if (ds.jobType === 'Background') { bgCount++; bgCUs += val; }
+                                            else { intCount++; intCUs += val; }
+                                        }
+                                    });
+                                    const total = bgCUs + intCUs;
+                                    const pct = state.cuLimit > 0 ? (total / state.cuLimit * 100) : 0;
+                                    const bgPct = state.cuLimit > 0 ? (bgCUs / state.cuLimit * 100) : 0;
+                                    const intPct = state.cuLimit > 0 ? (intCUs / state.cuLimit * 100) : 0;
+
+                                    const lines = [
+                                        `Background:  ${bgCount} ${t('ttJobs')} • ${formatNum(bgCUs)} CUs (${formatNum(bgPct)}%)`,
+                                        `Interactive: ${intCount} ${t('ttJobs')} • ${formatNum(intCUs)} CUs (${formatNum(intPct)}%)`,
+                                        `•`,
+                                        `${t('ttTotal')}: ${formatNum(total)} CUs • ${formatNum(pct)}% cap.`
+                                    ];
+                                    
+                                    const h = state.historyData[idx];
+                                    if (h) {
+                                        const cv10 = state.cuLimit * 20;
+                                        const cv60 = state.cuLimit * 120;
+                                        const cv24 = state.cuLimit * 2880;
+
+                                        const f10 = h.future10CUs || 0;
+                                        const f60 = h.future60CUs || 0;
+                                        const f24 = h.future24CUs || 0;
+
+                                        const p10 = cv10 > 0 ? (f10 / cv10 * 100) : 0;
+                                        const p60 = cv60 > 0 ? (f60 / cv60 * 100) : 0;
+                                        const p24 = cv24 > 0 ? (f24 / cv24 * 100) : 0;
+
+                                        lines.push(`•`);
+                                        lines.push(`${t('ttDebt')}: ${formatNum(h.debtCUs || 0)} CUs`);
+                                        lines.push(`${t('ttFut10')}: ${formatNum(f10)} CUs (${formatNum(p10)}%)`);
+                                        lines.push(`${t('ttFut60')}: ${formatNum(f60)} CUs (${formatNum(p60)}%)`);
+                                        lines.push(`${t('ttFut24')}: ${formatNum(f24)} CUs (${formatNum(p24)}%)`);
+                                    }
+                                    
+                                    return lines;
+                                }
+                            }
+                        },
+                        zoom: {
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                                onPan: () => { state.isFollowing = false; updateChartRangeLabel(); }
+                            },
+                            zoom: {
+                                wheel: { enabled: false, speed: 0.15 },
+                                pinch: { enabled: true },
+                                mode: 'x',
+                                onZoom: () => { state.isFollowing = false; updateChartRangeLabel(); }
+                            },
+                            limits: { x: { min: 0, max: CHART_MAX_TPS, minRange: 10 } }
+                        }
+                    },
+                    animation: { duration: 0 } 
+                },
+                plugins: [{
+                    id: 'throttlingBackground',
+                    beforeDraw: (chart) => {
+                        const ctx = chart.ctx;
+                        const yAxis = chart.scales.y;
+                        const xAxis = chart.scales.x;
+                        const meta = chart.getDatasetMeta(0);
+                        if (!meta || !meta.data || meta.data.length === 0) return;
+                        
+                        const minIdx = Math.max(0, Math.floor(xAxis.min || 0));
+                        const maxIdx = Math.min(CHART_MAX_TPS - 1, Math.ceil(xAxis.max || CHART_MAX_TPS));
+                        
+                        ctx.save();
+                        for (let i = minIdx; i <= maxIdx; i++) {
+                            const h = state.historyData[i];
+                            let isSuspended = state.suspensions && state.suspensions.some(s => i >= s.startTp && i < s.endTp);
+                            
+                            if (isSuspended || (h && h.throttleLevel > 0)) {
+                                const pt = meta.data[i];
+                                if (!pt || pt.x === undefined || isNaN(pt.x)) continue;
+                                const xPos = pt.x;
+                                
+                                let width = 5;
+                                if (i < meta.data.length - 1 && meta.data[i+1] && meta.data[i+1].x !== undefined) {
+                                    width = meta.data[i+1].x - xPos;
+                                } else if (i > 0 && meta.data[i-1] && meta.data[i-1].x !== undefined) {
+                                    width = xPos - meta.data[i-1].x;
+                                }
+                                width = Math.max(2, Math.abs(width));
+                                
+                                if (isSuspended) {
+                                    ctx.fillStyle = 'rgba(100, 116, 139, 0.4)';
+                                } else {
+                                    if (h.throttleLevel === 1) ctx.fillStyle = 'rgba(245, 158, 11, 0.4)'; // amber
+                                    else if (h.throttleLevel === 2) ctx.fillStyle = 'rgba(249, 115, 22, 0.5)'; // orange
+                                    else if (h.throttleLevel === 3) ctx.fillStyle = 'rgba(239, 68, 68, 0.6)'; // red
+                                }
+                                
+                                ctx.fillRect(xPos - width / 2, yAxis.top, width, yAxis.bottom - yAxis.top);
+                            }
+                        }
+                        ctx.restore();
+                    }
+                }, {
+                    id: 'tpSelectedLine',
+                    afterDraw: (chart) => {
+                        if (forensicCursor >= 0 && state.historyData[forensicCursor]) {
+                            const ctx = chart.ctx;
+                            const xAxis = chart.scales.x;
+                            const yAxis = chart.scales.y;
+                            const xPixel = xAxis.getPixelForValue(forensicCursor);
+                            if (xPixel >= xAxis.left && xPixel <= xAxis.right) {
+                                ctx.save();
+                                ctx.beginPath();
+                                ctx.setLineDash([5, 5]);
+                                ctx.moveTo(xPixel, yAxis.top);
+                                ctx.lineTo(xPixel, yAxis.bottom);
+                                ctx.lineWidth = 2;
+                                ctx.strokeStyle = '#f59e0b';
+                                ctx.stroke();
+                                ctx.restore();
+                            }
+                        }
+                    }
+                }]
+            });
+
+            document.getElementById('clock-display').textContent = formatFullDateTime(clock);
+            cambiarSKU();
+        }
+
+        function exportarSimulacion() {
+            try {
+                const config = {
+                    skuVal: document.getElementById('sku-select').value,
+                    horizon: document.getElementById('horizon-select').value,
+                    pricePAYG: document.getElementById('price-f2-payg').value,
+                    priceRes: document.getElementById('price-f2-res').value
+                };
+                
+                const jobs = fabricChart.data.datasets.slice(1)
+                    .filter(ds => ds.jobId !== 'debt_liq')
+                    .map(ds => ({
+                        name: ds.jobName,
+                        exp: ds.jobExp,
+                        type: ds.jobType,
+                        cus: ds.jobTotalCUs,
+                        startTp: ds.startTp !== undefined ? ds.startTp : ds.data.findIndex(v => v > 0)
+                    }));
+                
+                const exportObj = {
+                    version: "2.0-minimal",
+                    config,
+                    reservations: state.reservations,
+                    suspensions: state.suspensions,
+                    jobs,
+                    targetTp: state.tpCursor
+                };
+                
+                const jsonStr = JSON.stringify(exportObj);
+                const blob = new Blob([jsonStr], { type: "application/json" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `fabric_sim_mini_${formatFullDateTime(clock).replace(/[:/ ]/g, "_")}.json`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+            } catch (err) {
+                console.error("Error exportando:", err);
+                alert(t('alerts.invalidFile') + err.message);
+            }
+        }
+
+        function importarSimulacion(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const imported = JSON.parse(e.target.result);
+                    if (imported.version !== "2.0-minimal") {
+                        if (imported.version === "1.0") throw new Error(t('alerts.invalidVer1'));
+                        throw new Error(t('alerts.invalidVer'));
+                    }
+                    
+                    if (state.isRunning) togglePause();
+                    
+                    document.getElementById('sku-select').value = imported.config.skuVal;
+                    document.getElementById('horizon-select').value = imported.config.horizon;
+                    document.getElementById('price-f2-payg').value = imported.config.pricePAYG;
+                    document.getElementById('price-f2-res').value = imported.config.priceRes;
+                    
+                    CHART_MAX_TPS = parseInt(imported.config.horizon);
+                    defaultChartWindow = Math.min(120, CHART_MAX_TPS);
+                    reiniciarSimulacion();
+                    
+                    state.reservations = imported.reservations || [];
+                    renderReservationsTable();
+                    
+                    const target = imported.targetTp || 0;
+                    for (let tpIdx = 0; tpIdx <= target; tpIdx++) {
+                        const pausasEnd = imported.suspensions.filter(s => s.endTp === tpIdx);
+                        if (pausasEnd.length > 0) {
+                            state.isCapacityPaused = false;
+                        }
+
+                        const pausasStart = imported.suspensions.filter(s => s.startTp === tpIdx);
+                        if (pausasStart.length > 0) {
+                            state.isCapacityPaused = true;
+                        }
+
+                        imported.jobs.filter(j => j.startTp === tpIdx).forEach(j => {
+                            guardarTrabajo(true, j.name, j.type, j.cus, j.exp);
+                        });
+                        
+                        advanceTimepoint(true);
+                        
+                        pausasStart.forEach(s => {
+                            ejecutarPausa(tpIdx, true);
+                            state.suspensions[state.suspensions.length - 1].endTp = s.endTp;
+                        });
+                    }
+                    
+                    fabricChart.update('none');
+                    recalcularFacturacion();
+                    renderEventLog();
+                    updateChartRangeLabel();
+                    updateActiveJobsCounter();
+                    document.getElementById('clock-display').textContent = formatFullDateTime(clock);
+                    
+                } catch (err) {
+                    alert(t('alerts.errorImport') + err.message);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        window.addEventListener('DOMContentLoaded', inicializarSimulador);
+    </script>
+
+    <!-- Modal Confirmación de Pausa -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-4">
+        <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-2xl max-w-md w-full text-center">
+            <h3 class="text-amber-400 font-bold text-lg mb-2" data-i18n="alerts.surePause">¿Está seguro de querer Pausar la capacidad?</h3>
+            <p class="text-slate-300 text-sm mb-6 text-left">
+                <span data-i18n="alerts.pauseWarn">Tenga en cuenta que todos los trabajos en curso terminarán, y todo el consumo excedente y suavizado se agregará a la factura de Azure.</span><br><br>
+                <span data-i18n="alerts.pauseWarn2">Igualmente, al reanudar, la capacidad estará disponible sin deudas acumuladas ni throttling.</span>
+            </p>
+            <div class="flex gap-3">
+                <button id="btn-confirm-yes" onclick="togglePausarCapacidad(true)" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-4 rounded transition" data-i18n="alerts.btnYesPause">Sí, Pausar</button>
+                <button id="btn-confirm-no" onclick="document.getElementById('confirm-modal').classList.add('hidden')" class="flex-1 bg-slate-600 hover:bg-slate-500 text-white font-bold py-2 px-4 rounded transition" data-i18n="alerts.btnNoPause">No, me lo pienso mejor</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
