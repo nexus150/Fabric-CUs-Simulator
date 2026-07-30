@@ -52,29 +52,33 @@
                 </div>
             </div>
             <div class="flex flex-col md:flex-row gap-4">
-                <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700">
-                    <div class="text-right border-r border-slate-600 pr-3">
-                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realTotal">&#x1F4B3; Real (Total)</div>
-                        <div id="cost-real" class="text-lg font-mono font-bold text-white">0.00 €</div>
+                <div class="flex items-center divide-x divide-slate-600 bg-slate-800 p-3 rounded-lg border border-slate-700 overflow-x-auto">
+                    <div class="text-right px-4 first:pl-0">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap" data-i18n="realTotal">&#x1F4B3; Real (Total)</div>
+                        <div id="cost-real" class="text-[15px] font-mono font-bold text-white whitespace-nowrap">0.00 €</div>
                     </div>
-                    <div class="text-right border-r border-slate-600 pr-3">
-                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realRes">Real (Reserva)</div>
-                        <div id="cost-real-res" class="text-sm font-mono font-bold text-emerald-400">0.00 €</div>
+                    <div class="text-right px-4">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap" data-i18n="realRes">Real (Reserva)</div>
+                        <div id="cost-real-res" class="text-xs font-mono font-bold text-emerald-400 whitespace-nowrap">0.00 €</div>
                     </div>
-                    <div class="text-right">
-                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="realPayg">Real (PAYG)</div>
-                        <div id="cost-real-payg" class="text-sm font-mono font-bold text-amber-400">0.00 €</div>
+                    <div class="text-right px-4">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap" data-i18n="realPayg">Real (PAYG)</div>
+                        <div id="cost-real-payg" class="text-xs font-mono font-bold text-amber-400 whitespace-nowrap">0.00 €</div>
+                    </div>
+                    <div class="text-right px-4 last:pr-0">
+                        <div class="text-[10px] text-red-300 uppercase tracking-wider whitespace-nowrap" data-i18n="wastedRes">Reservación desaprovechada</div>
+                        <div id="cost-wasted-res" class="text-xs font-mono font-bold text-red-400 whitespace-nowrap">0.00 €</div>
                     </div>
                 </div>
-                <div class="flex items-center gap-3 bg-slate-800 p-3 rounded-lg border border-slate-700">
-                    <div class="text-right border-r border-slate-600 pr-3 relative pb-2">
-                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="escenPayg">Escen. Todo PAYG</div>
-                        <div id="cost-payg" class="text-lg font-mono font-bold text-slate-300">0.00 €</div>
-                        <div id="diff-payg" class="text-[9px] font-mono text-slate-500 absolute bottom-0 right-3 whitespace-nowrap">--</div>
+                <div class="flex items-center divide-x divide-slate-600 bg-slate-800 p-3 rounded-lg border border-slate-700 overflow-x-auto">
+                    <div class="text-right px-4 first:pl-0 relative pb-3">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap" data-i18n="escenPayg">Escen. Todo PAYG</div>
+                        <div id="cost-payg" class="text-[13px] font-mono font-bold text-slate-300 whitespace-nowrap">0.00 €</div>
+                        <div id="diff-payg" class="text-[9px] font-mono text-slate-500 absolute bottom-0 right-4 whitespace-nowrap">--</div>
                     </div>
-                    <div class="text-right relative pb-2">
-                        <div class="text-[10px] text-slate-400 uppercase tracking-wider" data-i18n="escenRes">Escen. Todo Reserva</div>
-                        <div id="cost-reserved" class="text-lg font-mono font-bold text-slate-300">0.00 €</div>
+                    <div class="text-right px-4 last:pr-0 relative pb-3">
+                        <div class="text-[10px] text-slate-400 uppercase tracking-wider whitespace-nowrap" data-i18n="escenRes">Escen. Todo Reserva</div>
+                        <div id="cost-reserved" class="text-[13px] font-mono font-bold text-slate-300 whitespace-nowrap">0.00 €</div>
                         <div id="diff-res" class="text-[9px] font-mono text-slate-500 absolute bottom-0 right-0 whitespace-nowrap">--</div>
                     </div>
                 </div>
@@ -424,6 +428,7 @@
                                     <th class="px-2 py-2 text-right whitespace-nowrap font-bold text-white" data-i18n="costTotal">Coste Total</th>
                                     <th class="px-2 py-2 text-left whitespace-nowrap" data-i18n="activeResTable">Reservas activas</th>
                                     <th class="px-2 py-2 text-right whitespace-nowrap text-sky-400" data-i18n="resUnused">Rsv. no aprovechada (CUs)</th>
+                                    <th class="px-2 py-2 text-right whitespace-nowrap text-red-400" data-i18n="costUnusedRes">Coste Unused Res.</th>
                                 </tr>
                             </thead>
                             <tbody id="billing-tbody"></tbody>
@@ -438,6 +443,7 @@
                                     <td id="billing-total-eur" class="px-2 py-2 text-right font-mono font-bold text-white">--</td>
                                     <td></td>
                                     <td id="billing-total-res-unused" class="px-2 py-2 text-right font-mono text-sky-400 font-bold">--</td>
+                                    <td id="billing-total-res-unused-eur" class="px-2 py-2 text-right font-mono text-red-400 font-bold">--</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -491,6 +497,7 @@ const i18n = {
         title: "Simulador de Consumo de CUs de Fabric",
         realTotal: "💳 Real (Total)",
         realRes: "Real (Reserva)",
+        wastedRes: "Reservación desaprovechada",
         realPayg: "Real (PAYG)",
         escenPayg: "Escen. Todo PAYG",
         escenRes: "Escen. Todo Reserva",
@@ -585,6 +592,7 @@ const i18n = {
         cusRes: "CUs Reserva",
         cusPayg: "CUs PAYG",
         costRes: "Coste Reserva",
+        costUnusedRes: "Coste Unused Res.",
         costPayg: "Coste PAYG",
         costTotal: "Coste Total",
         resUnused: "Rsv. no aprovechada (CUs)",
@@ -657,6 +665,7 @@ const i18n = {
         title: "Fabric CU Consumption Simulator",
         realTotal: "💳 Real (Total)",
         realRes: "Real (Reserved)",
+        wastedRes: "Wasted Reservation",
         realPayg: "Real (PAYG)",
         escenPayg: "Scen. All PAYG",
         escenRes: "Scen. All Reserved",
@@ -751,6 +760,7 @@ const i18n = {
         cusRes: "Res. CUs",
         cusPayg: "PAYG CUs",
         costRes: "Res. Cost",
+        costUnusedRes: "Unused Res. Cost",
         costPayg: "PAYG Cost",
         costTotal: "Total Cost",
         resUnused: "Unused Res. (CUs)",
@@ -888,8 +898,16 @@ function setLanguage(lang) {
     const dateSel = document.getElementById('date-format-select');
     let formatChanged = false;
     if (numSel && numSel.value !== lang) {
+        const paygInp = document.getElementById('price-f2-payg');
+        const resInp = document.getElementById('price-f2-res');
+        let valPayg = parseLocalNumber(paygInp.value);
+        let valRes = parseLocalNumber(resInp.value);
+        
         numSel.value = lang;
         numSel.setAttribute('data-prev', lang);
+        
+        paygInp.value = lang === 'en' ? valPayg.toString() : valPayg.toString().replace('.', ',');
+        resInp.value = lang === 'en' ? valRes.toString() : valRes.toString().replace('.', ',');
         formatChanged = true;
     }
     if (dateSel && dateSel.value !== lang) {
@@ -936,13 +954,25 @@ function updateFormats() {
 }
 
 function handleFormatChange(selectElem) {
+    const oldLang = selectElem.getAttribute('data-prev');
     if (typeof state !== 'undefined' && state && state.tpCursor > 0) {
         if (!confirm(t('alerts.confirmFormatChange'))) {
-            selectElem.value = selectElem.getAttribute('data-prev');
+            selectElem.value = oldLang;
             return;
         }
         reiniciarSimulacion();
     }
+    
+    if (selectElem.id === 'num-format-select') {
+        const lang = selectElem.value;
+        const paygInp = document.getElementById('price-f2-payg');
+        const resInp = document.getElementById('price-f2-res');
+        let valPayg = oldLang === 'en' ? parseFloat(paygInp.value.replace(/,/g, '')) || 0 : parseFloat(paygInp.value.replace(/\./g, '').replace(',', '.')) || 0;
+        let valRes = oldLang === 'en' ? parseFloat(resInp.value.replace(/,/g, '')) || 0 : parseFloat(resInp.value.replace(/\./g, '').replace(',', '.')) || 0;
+        paygInp.value = lang === 'en' ? valPayg.toString() : valPayg.toString().replace('.', ',');
+        resInp.value = lang === 'en' ? valRes.toString() : valRes.toString().replace('.', ',');
+    }
+    
     selectElem.setAttribute('data-prev', selectElem.value);
     updateFormats();
 }
@@ -959,9 +989,9 @@ function handleFormatChange(selectElem) {
         let tableState = { rows: [], sortField: null, sortDir: 'asc', currentPage: 1, pageSize: 50, highlightedJobId: null, currentTimeIndex: -1 };
         
         let state = {
-            isRunning: false, skuVal: 2, cuLimit: 60, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, speedTpsSec: 10, jobCounter: 1,
+            isRunning: false, skuVal: 2, cuLimit: 60, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, costWastedRes: 0, speedTpsSec: 10, jobCounter: 1,
             tpCursor: 0, isFollowing: true, isCapacityPaused: false,
-            reservations: [], billingRows: [], suspensions: [], pendingOveragesToBill: 0,
+            reservations: [], billingRows: [], suspensions: [], capacityChanges: [], pendingOveragesToBill: 0,
             activeJobs: {}, chartLabels: Array(CHART_MAX_TPS).fill(""), historyData: Array(CHART_MAX_TPS).fill(null),
             debtBucketCUs: 0, throttleLevel: 0, lastFuture10: 0, lastFuture60: 0, lastFuture24: 0
         };
@@ -1044,11 +1074,19 @@ function handleFormatChange(selectElem) {
         }
 
         function cambiarSKU() {
+            const oldSku = state.skuVal;
             state.skuVal = parseInt(document.getElementById('sku-select').value);
             state.cuLimit = (state.skuVal / 2) * 60; 
             if (fabricChart && fabricChart.data.datasets.length > 0) {
-                fabricChart.data.datasets[0].data = Array(CHART_MAX_TPS).fill(state.cuLimit);
+                for(let i=state.tpCursor; i<CHART_MAX_TPS; i++){
+                    fabricChart.data.datasets[0].data[i] = state.cuLimit;
+                }
                 if(!state.isRunning) fabricChart.update('none');
+            }
+            if (oldSku !== undefined && oldSku !== state.skuVal) {
+                if (!state.capacityChanges) state.capacityChanges = [];
+                state.capacityChanges.push({ tpIdx: state.tpCursor, oldSku, newSku: state.skuVal });
+                renderEventLog();
             }
             evaluarThrottling();
         }
@@ -1106,8 +1144,8 @@ function handleFormatChange(selectElem) {
             
             clock = new Date(2026, 0, 1, 8, 0, 0);
             lastBillingHourStr = null;
-            state = { ...state, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, jobCounter: 1, activeJobs: {}, tpCursor: 0, isFollowing: true,
-                isCapacityPaused: false, reservations: [], billingRows: [], suspensions: [], pendingOveragesToBill: 0,
+            state = { ...state, costPAYG: 0, costRes: 0, costReal: 0, costRealRes: 0, costRealPAYG: 0, costWastedRes: 0, jobCounter: 1, activeJobs: {}, tpCursor: 0, isFollowing: true,
+                isCapacityPaused: false, reservations: [], billingRows: [], suspensions: [], capacityChanges: [], pendingOveragesToBill: 0,
                 chartLabels: Array(CHART_MAX_TPS).fill(""), historyData: Array(CHART_MAX_TPS).fill(null),
                 debtBucketCUs: 0, throttleLevel: 0, lastFuture10: 0, lastFuture60: 0, lastFuture24: 0 };
             bgJobCount = 0; intJobCount = 0; bgNameCount = 0; intNameCount = 0; forensicCursor = -1;
@@ -1253,7 +1291,8 @@ function handleFormatChange(selectElem) {
 
         function agregarReserva() {
             const nameInput = document.getElementById('res-name');
-            const name = nameInput.value.trim() || `Reserva ${reservationCounter++}`;
+            const defaultName = currentLang === 'es' ? 'Reserva' : 'Reservation';
+            const name = nameInput.value.trim() || `${defaultName} ${reservationCounter++}`;
             const cuPerSec = parseInt(document.getElementById('res-cu-per-sec').value) || 2;
             state.reservations.push({
                 id: Date.now(),
@@ -1486,8 +1525,8 @@ function handleFormatChange(selectElem) {
                     capacityCUsActive += state.cuLimit;
                     billedThisTp = state.cuLimit;
                 } else {
-                    liquidationCUs += h.totalCUs;
-                    billedThisTp = h.totalCUs;
+                    liquidationCUs += 0;
+                    billedThisTp = 0;
                 }
                 
                 hourTPs.unshift({
@@ -1500,7 +1539,7 @@ function handleFormatChange(selectElem) {
             }
             
             let cusToBill = capacityCUsActive + liquidationCUs;
-            if (cusToBill === 0 && !historyClock) cusToBill = cusCapPerHour;
+            if (hourTPs.length === 0 && !historyClock) cusToBill = cusCapPerHour;
 
             let reservedCusSlot = 0;
             let totalReservedAvailable = 0;
@@ -1525,8 +1564,9 @@ function handleFormatChange(selectElem) {
             const paygCusSlot = Math.max(0, cusToBill - reservedCusSlot);
 
             const costRes_slot = reservedCusSlot * pricePerCu_Res;
+            const costUnusedRes_slot = unusedResCus * pricePerCu_Res;
             const costPAYG_slot = paygCusSlot * pricePerCu_PAYG;
-            const costTotal_slot = costRes_slot + costPAYG_slot;
+            const costTotal_slot = costRes_slot + costUnusedRes_slot + costPAYG_slot;
 
             state.billingRows.push({
                 hourStr: slotHourStr,
@@ -1535,6 +1575,7 @@ function handleFormatChange(selectElem) {
                 cusResUnused: unusedResCus,
                 cusPAYG: paygCusSlot,
                 eurRes: costRes_slot,
+                eurUnusedRes: costUnusedRes_slot,
                 eurPAYG: costPAYG_slot,
                 eurTotal: costTotal_slot,
                 resNames: activeResNames.join(', '),
@@ -1543,6 +1584,7 @@ function handleFormatChange(selectElem) {
 
             state.costReal += costTotal_slot;
             state.costRealRes += costRes_slot;
+            state.costWastedRes += costUnusedRes_slot;
             state.costRealPAYG += costPAYG_slot;
             state.costPAYG += cusToBill * pricePerCu_PAYG;
             state.costRes += cusToBill * pricePerCu_Res;
@@ -1761,6 +1803,7 @@ function handleFormatChange(selectElem) {
             const sym = getCurrency();
             document.getElementById('cost-real').textContent = `${formatNum(state.costReal)} ${sym}`;
             document.getElementById('cost-real-res').textContent = `${formatNum(state.costRealRes)} ${sym}`;
+            document.getElementById('cost-wasted-res').textContent = `${formatNum(state.costWastedRes)} ${sym}`;
             document.getElementById('cost-real-payg').textContent = `${formatNum(state.costRealPAYG)} ${sym}`;
             
             document.getElementById('cost-payg').textContent = `${formatNum(state.costPAYG)} ${sym}`;
@@ -1816,12 +1859,12 @@ function handleFormatChange(selectElem) {
 
             empty.classList.add('hidden'); table.classList.remove('hidden');
 
-            let totCap = 0, totResCus = 0, totResUnused = 0, totPaygCus = 0, totResEur = 0, totPaygEur = 0, totEur = 0;
+            let totCap = 0, totResCus = 0, totResUnused = 0, totPaygCus = 0, totResEur = 0, totUnusedResEur = 0, totPaygEur = 0, totEur = 0;
             const sym = getCurrency();
 
             state.billingRows.forEach(r => {
                 totCap += r.cusCap; totResCus += r.cusRes; totResUnused += r.cusResUnused; totPaygCus += r.cusPAYG;
-                totResEur += r.eurRes; totPaygEur += r.eurPAYG; totEur += r.eurTotal;
+                totResEur += r.eurRes; totUnusedResEur += r.eurUnusedRes; totPaygEur += r.eurPAYG; totEur += r.eurTotal;
             });
 
             let startIdx = appendOnly ? Math.max(0, state.billingRows.length - 1) : 0;
@@ -1845,6 +1888,7 @@ function handleFormatChange(selectElem) {
                     <td class="px-2 py-1.5 text-right font-mono font-bold text-white">${formatNum(r.eurTotal)} ${sym}</td>
                     <td class="px-2 py-1.5 text-slate-500 whitespace-nowrap">${r.resNames || '-'}</td>
                     <td class="px-2 py-1.5 text-right font-mono text-sky-400">${formatNum(r.cusResUnused)}</td>
+                    <td class="px-2 py-1.5 text-right font-mono text-red-400">${formatNum(r.eurUnusedRes)} ${sym}</td>
                 `;
                 tbody.appendChild(tr);
 
@@ -1869,6 +1913,7 @@ function handleFormatChange(selectElem) {
             document.getElementById('billing-total-cap').textContent = formatNum(totCap);
             document.getElementById('billing-total-res-cus').textContent = formatNum(totResCus);
             document.getElementById('billing-total-res-unused').textContent = formatNum(totResUnused);
+            document.getElementById('billing-total-res-unused-eur').textContent = `${formatNum(totUnusedResEur)} ${sym}`;
             document.getElementById('billing-total-payg-cus').textContent = formatNum(totPaygCus);
             document.getElementById('billing-total-res-eur').textContent = `${formatNum(totResEur)} ${sym}`;
             document.getElementById('billing-total-payg-eur').textContent = `${formatNum(totPaygEur)} ${sym}`;
@@ -1902,10 +1947,6 @@ function handleFormatChange(selectElem) {
             clock.setSeconds(clock.getSeconds() + TP_SECONDS);
             if (!isFastForwarding) {
                 document.getElementById('clock-display').textContent = formatFullDateTime(clock);
-            }
-
-            if (clock.getMinutes() === 0 && clock.getSeconds() === 0) {
-                procesarFacturacionHora(clock);
             }
 
             state.chartLabels[tpIdx] = formatChartXAxis(clock);
@@ -2002,6 +2043,10 @@ function handleFormatChange(selectElem) {
                 tpContribCUs: tpContribCUs
             };
             state.tpCursor++;
+
+            if (clock.getMinutes() === 0 && clock.getSeconds() === 0) {
+                procesarFacturacionHora(clock);
+            }
 
             if (prevThrottle !== state.throttleLevel && !isFastForwarding) {
                 renderEventLog();
@@ -2309,6 +2354,15 @@ function handleFormatChange(selectElem) {
                 }
             });
             
+            if (state.capacityChanges) {
+                state.capacityChanges.forEach(c => {
+                    const isUp = c.newSku > c.oldSku;
+                    const evName = isUp ? `Scale Up F${c.oldSku} -> F${c.newSku}` : `Scale Down F${c.oldSku} -> F${c.newSku}`;
+                    const evColor = isUp ? "text-sky-400 font-bold" : "text-amber-400 font-bold";
+                    state.events.push({ tpIdx: c.tpIdx, name: evName, color: evColor });
+                });
+            }
+            
             state.events.sort((a, b) => a.tpIdx - b.tpIdx);
         }
 
@@ -2474,7 +2528,7 @@ function handleFormatChange(selectElem) {
                     },
                     scales: {
                         x: { min: 0, max: defaultChartWindow, grid: { color: '#334155' }, ticks: { color: '#94a3b8', maxTicksLimit: 12 } },
-                        y: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' }, min: 0 }
+                        y: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' }, min: 0, grace: '5%' }
                     },
                     plugins: {
                         legend: { display: false },
