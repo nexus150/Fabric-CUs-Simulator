@@ -139,6 +139,6 @@ If you have managed to simulate a fascinating (or catastrophic) use case, you ca
 19. **Next Timepoint Analysis**.
 20. **Hourly Billing Details and Consumption per Timepoint**.
 21. **List of Active Reservations at Current Timepoint**.
-22. **Event Log**.
+22. **Event Log**..
 
 ![Main P2](assets/main_p2_with_bullets.png)
